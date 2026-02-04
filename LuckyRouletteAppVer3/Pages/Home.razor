@@ -1,0 +1,162 @@
+﻿@page "/"
+@using System.Threading
+
+<PageTitle>ルーレットゲーム</PageTitle>
+
+<div class="container">
+    <h1>🎡 くるくるルーレット</h1>
+
+    <div class="roulette-stage">
+        <div class="marker">▼</div>
+        <div class="wheel" style="transform: rotate(@(rotationAngle)deg); transition: transform @(transitionSeconds)s cubic-bezier(0.25, 0.1, 0.25, 1);">
+            <span class="number n-top">1</span>
+            <span class="number n-right">2</span>
+            <span class="number n-bottom">3</span>
+            <span class="number n-left">4</span>
+        </div>
+    </div>
+
+    <h2 class="result-text">@resultMessage</h2>
+
+    <button class="btn-spin" @onclick="SpinWheel" disabled="@isSpinning">
+        @if (isSpinning)
+        {
+            <span>回転中...</span>
+        }
+        else
+        {
+
+            <span>回す！</span>
+        }
+    </button>
+</div>
+
+@code {
+    private double rotationAngle = 0;
+    private double transitionSeconds = 0;
+    private bool isSpinning = false;
+    private string resultMessage = "ボタンを押してスタート";
+    private Random random = new Random();
+
+    private async Task SpinWheel()
+    {
+        isSpinning = true;
+        resultMessage = "運命の回転...";
+
+        int extraSpin = random.Next(0, 360);
+        rotationAngle += 1800 + extraSpin;
+
+        transitionSeconds = 4;
+        StateHasChanged();
+
+        await Task.Delay(4100);
+
+        CalculateResult(rotationAngle);
+        isSpinning = false;
+    }
+
+    private void CalculateResult(double finalAngle)
+    {
+        double normalized = finalAngle % 360;
+        string hitNumber = "";
+        if (normalized >= 0 && normalized < 90) hitNumber = "1 (赤)";
+        else if (normalized >= 90 && normalized < 180) hitNumber = "4 (黄)";
+        else if (normalized >= 180 && normalized < 270) hitNumber = "3 (青)";
+        else hitNumber = "2 (緑)";
+        resultMessage = $"結果: {hitNumber} です！";
+    }
+}
+
+<style>
+    .container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        margin-top: 30px;
+        font-family: 'Arial', sans-serif;
+    }
+
+    .roulette-stage {
+        position: relative;
+        width: 300px;
+        height: 300px;
+        margin: 20px 0;
+    }
+
+    .marker {
+        position: absolute;
+        top: -15px;
+        left: 50%;
+        transform: translateX(-50%);
+        font-size: 30px;
+        color: #333;
+        z-index: 10;
+    }
+
+    .wheel {
+        width: 100%;
+        height: 100%;
+        border-radius: 50%;
+        border: 10px solid #ddd;
+        box-sizing: border-box;
+        position: relative;
+        background: conic-gradient(#ff6b6b 0deg 90deg, #51cf66 90deg 180deg, #339af0 180deg 270deg, #fcc419 270deg 360deg);
+    }
+
+    .number {
+        position: absolute;
+        font-weight: bold;
+        font-size: 24px;
+        color: white;
+    }
+
+    .n-top {
+        top: 15%;
+        left: 65%;
+        transform: translate(-50%, -50%) rotate(45deg);
+    }
+
+    .n-right {
+        top: 65%;
+        left: 85%;
+        transform: translate(-50%, -50%) rotate(135deg);
+    }
+
+    .n-bottom {
+        top: 85%;
+        left: 35%;
+        transform: translate(-50%, -50%) rotate(225deg);
+    }
+
+    .n-left {
+        top: 35%;
+        left: 15%;
+        transform: translate(-50%, -50%) rotate(315deg);
+    }
+
+    .result-text {
+        min-height: 1.5em;
+        color: #333;
+    }
+
+    .btn-spin {
+        margin-top: 20px;
+        padding: 15px 50px;
+        font-size: 1.2rem;
+        border-radius: 30px;
+        border: none;
+        background: #ff6b6b;
+        color: white;
+        cursor: pointer;
+    }
+
+        .btn-spin:disabled {
+            background: #ccc;
+        }
+</style>
+
+<div style="margin-top: 30px; text-align: center;">
+    <a href="/" style="color: #666; text-decoration: underline;">
+        ← ホームに戻る
+    </a>
+</div>
