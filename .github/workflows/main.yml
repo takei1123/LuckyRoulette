@@ -21,23 +21,26 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      # .NET 環境設定
+      # .NET の設定 (VS2026ならバージョン10ですが、安全のため9も入れます)
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '9.0.x' # 最新環境に合わせる
+          dotnet-version: |
+            9.0.x
+            10.0.x
 
-      # アプリを発行
+      # アプリの発行（ビルド）
       - name: Publish .NET Project
         run: dotnet publish -c Release -o release --nologo
 
-      # 【修正ポイント】おまじないファイル作成
+      # 【重要】GitHub Pages用の修正ファイル作成
       - name: Create .nojekyll
         run: touch release/wwwroot/.nojekyll
 
-      # GitHub Pages 用にアップロード
+      # 成果物をアップロード
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
