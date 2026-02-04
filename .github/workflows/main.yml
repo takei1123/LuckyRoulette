@@ -3,27 +3,47 @@ name: Deploy to GitHub Pages
 on:
   push:
     branches: [ main, master ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
 
 jobs:
-  deploy-to-github-pages:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v4
-      
-      # .NET 10 (Visual Studio 2026) の環境を用意
+
+      # .NET 環境設定
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '10.0.x'
+          dotnet-version: '9.0.x' # 最新環境に合わせる
 
-      # アプリをWeb用に変換（発行）
+      # アプリを発行
       - name: Publish .NET Project
         run: dotnet publish -c Release -o release --nologo
 
-      # GitHub Pages に公開
-      - name: Deploy to GitHub Pages
-        uses: JamesIves/github-pages-deploy-action@v4
+      # 【修正ポイント】おまじないファイル作成
+      - name: Create .nojekyll
+        run: touch release/wwwroot/.nojekyll
+
+      # GitHub Pages 用にアップロード
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
         with:
-          folder: release/wwwroot
+          path: 'release/wwwroot'
+
+      # 公開処理
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
