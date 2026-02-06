@@ -1,12 +1,16 @@
 ﻿@page "/"
 @using System.Threading
 
-<PageTitle>Royal Roulette</PageTitle>
+<PageTitle>Custom Roulette</PageTitle>
 
 <div class="casino-table">
     <div class="title-area">
-        <h1>🎰 ROYAL ROULETTE</h1>
-        <p>本日の運勢を占おう</p>
+        <h1>🖊️ カスタム・ルーレット</h1>
+        <p>下のボックスに項目を入力してください（改行で区切る）</p>
+    </div>
+
+    <div class="input-area">
+        <textarea @bind="InputText" @bind:event="oninput" placeholder="ここに項目を入力&#10;例：&#10;ラーメン&#10;カレー&#10;寿司"></textarea>
     </div>
 
     <div class="roulette-container">
@@ -17,7 +21,9 @@
                 @for (int i = 0; i < 8; i++)
                 {
                     <div class="segment" style="transform: rotate(@(i * 45)deg)">
-                        <span class="number">@(Numbers[i])</span>
+                        <div class="text-container">
+                            <span class="text">@(GetDisplayItem(i))</span>
+                        </div>
                     </div>
                 }
             </div>
@@ -27,12 +33,12 @@
     <button class="btn-spin" @onclick="SpinWheel" disabled="@isSpinning">
         @if (isSpinning)
         {
-            <span>SPINNING...</span>
+            <span>回転中...</span>
         }
         else
         {
 
-            <span>SPIN!</span>
+            <span>スタート！</span>
         }
     </button>
 </div>
@@ -41,70 +47,69 @@
 {
     <div class="modal-overlay" @onclick="CloseModal">
         <div class="modal-content">
-            <h2>RESULT</h2>
-            <div class="result-number">@hitNumber</div>
-            <p>@resultMessage</p>
+            <h2>結果発表</h2>
+            <div class="result-text">@hitItem</div>
             <button class="btn-close" @onclick="CloseModal">閉じる</button>
         </div>
     </div>
 }
 
 @code {
-    // 8分割の数字定義 (時計回りの配置)
-    private readonly string[] Numbers = new[] { "1", "2", "3", "4", "5", "6", "7", "8" };
+    // 初期値
+    private string InputText = "大吉\n中吉\n小吉\n吉\n末吉\n凶\n大凶\n激レア";
 
     private double rotationAngle = 0;
     private double transitionSeconds = 0;
     private bool isSpinning = false;
     private bool showResult = false;
-    private string hitNumber = "";
-    private string resultMessage = "";
+    private string hitItem = "";
     private Random random = new Random();
+
+    // 入力されたテキストをリスト化する
+    private List<string> GetInputList()
+    {
+        if (string.IsNullOrWhiteSpace(InputText)) return new List<string> { "項目を入れて" };
+
+        // 改行コードで分割して空行を削除
+        return InputText.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).ToList();
+    }
+
+    // 8つのスロットに項目を割り当てる（項目が少ない場合は繰り返す）
+    private string GetDisplayItem(int index)
+    {
+        var list = GetInputList();
+        if (list.Count == 0) return "";
+        return list[index % list.Count]; // 剰余演算でループさせる
+    }
 
     private async Task SpinWheel()
     {
         if (isSpinning) return;
 
         isSpinning = true;
-        showResult = false; // 結果を隠す
+        showResult = false;
 
-        // 回転数決定 (最低5回転 + ランダム)
         int extraSpin = random.Next(0, 360);
-        rotationAngle += 1800 + extraSpin; // 1800度 = 5回転
+        rotationAngle += 1800 + extraSpin;
 
-        transitionSeconds = 5; // 5秒かけて止まる（よりリアルに）
+        transitionSeconds = 4;
         StateHasChanged();
 
-        // 回転終了を待つ
-        await Task.Delay(5000);
+        await Task.Delay(4000);
 
         CalculateResult(rotationAngle);
         isSpinning = false;
-        showResult = true; // 結果を出す
+        showResult = true;
     }
 
     private void CalculateResult(double finalAngle)
     {
-        // 角度を正規化 (0-360)
         double normalized = finalAngle % 360;
-
-        // 針は上(0度)にあるが、盤が回るので計算は逆回転
-        // 1区画は45度 (360 / 8)
-        // 補正計算
         double corrected = (360 - normalized + 22.5) % 360;
         int index = (int)(corrected / 45);
 
-        hitNumber = Numbers[index];
-
-        // 偶数・奇数でメッセージを変える
-        if (int.Parse(hitNumber) % 2 == 0)
-        {
-            resultMessage = "偶数！ 黒の勝利！⚫";
-        }
-        else
-        {
-            resultMessage = "奇数！ 赤の勝利！🔴";
-        }
+        // 当たった場所の文字を取得
+        hitItem = GetDisplayItem(index);
     }
 
     private void CloseModal()
@@ -114,38 +119,53 @@
 }
 
 <style>
-    /* カジノ全体の雰囲気 */
     .casino-table {
-        background-color: #2c3e50; /* 暗いマット色 */
+        background-color: #34495e;
         min-height: 100vh;
         display: flex;
         flex-direction: column;
         align-items: center;
-        font-family: 'Helvetica Neue', Arial, sans-serif;
+        font-family: sans-serif;
         color: white;
-        padding-top: 20px;
+        padding: 20px;
     }
 
-    .title-area h1 {
-        font-size: 2.5rem;
-        color: #f1c40f; /* ゴールド */
-        text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
-        margin-bottom: 0;
+    .title-area {
+        text-align: center;
+        margin-bottom: 20px;
     }
 
-    /* ルーレット本体 */
+    /* 入力エリアのデザイン */
+    .input-area {
+        width: 100%;
+        max-width: 320px;
+        margin-bottom: 20px;
+    }
+
+    textarea {
+        width: 100%;
+        height: 100px;
+        padding: 10px;
+        border-radius: 10px;
+        border: 2px solid #f1c40f;
+        background: rgba(255, 255, 255, 0.9);
+        font-size: 16px;
+        color: #333;
+        resize: vertical; /* 縦に伸ばせるようにする */
+    }
+
     .roulette-container {
         position: relative;
-        margin: 40px 0;
+        margin-bottom: 30px;
     }
 
     .wheel-border {
-        width: 320px;
-        height: 320px;
+        width: 300px;
+        height: 300px;
         border-radius: 50%;
-        background: linear-gradient(135deg, #f1c40f, #b7950b); /* ゴールド枠 */
-        padding: 10px;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        background: #f1c40f;
+        padding: 8px;
+        box-shadow: 0 10px 20px rgba(0,0,0,0.3);
     }
 
     .wheel {
@@ -154,12 +174,11 @@
         border-radius: 50%;
         position: relative;
         overflow: hidden;
-        /* 8分割のカラーリング (赤と黒の交互) */
-        background: conic-gradient( #e74c3c 0deg 45deg, #2c3e50 45deg 90deg, #e74c3c 90deg 135deg, #2c3e50 135deg 180deg, #e74c3c 180deg 225deg, #2c3e50 225deg 270deg, #e74c3c 270deg 315deg, #2c3e50 315deg 360deg );
+        /* カラフルな背景 */
+        background: conic-gradient( #FF5733 0deg 45deg, #FFC300 45deg 90deg, #DAF7A6 90deg 135deg, #33FF57 135deg 180deg, #33FFBD 180deg 225deg, #3380FF 225deg 270deg, #8333FF 270deg 315deg, #FF33A8 315deg 360deg );
         border: 2px solid white;
     }
 
-    /* 数字の配置 */
     .segment {
         position: absolute;
         width: 100%;
@@ -170,112 +189,91 @@
         justify-content: center;
     }
 
-    .number {
-        margin-top: 20px;
-        font-size: 24px;
+    /* 文字を円の外側に見やすく配置する調整 */
+    .text-container {
+        margin-top: 35px; /* 中心からの距離 */
+        width: 80px; /* 文字表示幅 */
+        text-align: center;
+    }
+
+    .text {
         font-weight: bold;
         color: white;
         text-shadow: 1px 1px 2px black;
+        font-size: 14px;
+        word-break: break-all; /* 長い文字は折り返す */
+        display: inline-block;
+        line-height: 1.2;
     }
 
     .marker {
         position: absolute;
-        top: -25px;
+        top: -20px;
         left: 50%;
         transform: translateX(-50%);
         font-size: 40px;
-        color: #f1c40f; /* ゴールドの針 */
+        color: #e74c3c;
         z-index: 10;
-        filter: drop-shadow(0 2px 2px rgba(0,0,0,0.5));
+        text-shadow: 0 2px 2px rgba(0,0,0,0.3);
     }
 
-    /* スピンボタン */
     .btn-spin {
-        background: linear-gradient(to bottom, #e74c3c, #c0392b);
-        border: 2px solid #f1c40f;
+        background: #e74c3c;
         color: white;
-        padding: 15px 60px;
-        font-size: 1.5rem;
-        border-radius: 50px;
+        padding: 15px 50px;
+        font-size: 1.4rem;
+        border-radius: 30px;
+        border: none;
+        box-shadow: 0 4px 0 #c0392b;
         cursor: pointer;
-        box-shadow: 0 5px 0 #96281b;
-        transition: transform 0.1s;
     }
 
         .btn-spin:active {
-            transform: translateY(5px);
+            transform: translateY(4px);
             box-shadow: none;
         }
 
         .btn-spin:disabled {
             background: #95a5a6;
-            border-color: #7f8c8d;
-            box-shadow: none;
             cursor: not-allowed;
+            box-shadow: none;
         }
 
-    /* 結果ポップアップ (モーダル) */
     .modal-overlay {
         position: fixed;
         top: 0;
         left: 0;
         width: 100%;
         height: 100%;
-        background: rgba(0,0,0,0.7);
+        background: rgba(0,0,0,0.8);
         display: flex;
         justify-content: center;
         align-items: center;
         z-index: 100;
-        animation: fadeIn 0.3s;
     }
 
     .modal-content {
         background: white;
         padding: 30px;
-        border-radius: 15px;
+        border-radius: 10px;
         text-align: center;
         color: #333;
         width: 80%;
         max-width: 300px;
-        border: 5px solid #f1c40f;
-        animation: popUp 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
     }
 
-    .result-number {
-        font-size: 4rem;
+    .result-text {
+        font-size: 2.5rem;
         font-weight: bold;
-        color: #c0392b;
-        margin: 10px 0;
+        color: #e74c3c;
+        margin: 20px 0;
     }
 
     .btn-close {
-        margin-top: 15px;
-        padding: 10px 30px;
+        padding: 10px 20px;
         background: #333;
         color: white;
         border: none;
         border-radius: 5px;
-    }
-
-    @@keyframes popUp {
-        from {
-            transform: scale(0.5);
-            opacity: 0;
-        }
-
-        to {
-            transform: scale(1);
-            opacity: 1;
-        }
-    }
-
-    @@keyframes fadeIn {
-        from {
-            opacity: 0;
-        }
-
-        to {
-            opacity: 1;
-        }
     }
 </style>
