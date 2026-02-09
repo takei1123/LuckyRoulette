@@ -6,7 +6,7 @@
 <div class="casino-table">
     <div class="title-area">
         <h1>🏆 サバイバル・ルーレット</h1>
-        <p>項目を入れると即座に反映されます</p>
+        <p>勝者を削除して最後まで残るのは誰だ！？</p>
     </div>
 
     <div class="options-area">
@@ -39,17 +39,23 @@
         </div>
     </div>
 
-    <button class="btn-spin" @onclick="SpinWheel" disabled="@(isSpinning || DisplayItems.Count == 0 || (DisplayItems.Count == 1 && DisplayItems[0] == "項目を入力"))">
-        @if (isSpinning)
-        {
-            <span>抽選中...</span>
-        }
-        else
-        {
+    <div class="action-buttons">
+        <button class="btn-spin" @onclick="SpinWheel" disabled="@(isSpinning || DisplayItems.Count == 0 || (DisplayItems.Count == 1 && DisplayItems[0] == "項目を入力"))">
+            @if (isSpinning)
+            {
+                <span>抽選中...</span>
+            }
+            else
+            {
 
-            <span>スタート！</span>
-        }
-    </button>
+                <span>スタート！</span>
+            }
+        </button>
+
+        <button class="btn-reset" @onclick="ResetList" disabled="@isSpinning">
+            🔄 最初の状態に戻す
+        </button>
+    </div>
 </div>
 
 @if (showResult)
@@ -68,10 +74,11 @@
 
 @code {
     private string InputText = "A賞\nB賞\nC賞\nD賞\nE賞";
+    // バックアップ用変数
+    private string BackupText = "";
+
     private List<string> DisplayItems = new List<string>();
     private string CurrentGradient = "";
-
-    // 設定: 当たった項目を消すかどうか
     private bool removeWinner = true;
 
     private double rotationAngle = 0;
@@ -82,21 +89,35 @@
     private Random random = new Random();
     private string[] Colors = new[] { "#FF5733", "#33FF57", "#3357FF", "#FF33A8", "#FFC300", "#8E44AD", "#3498DB", "#E67E22" };
 
-    protected override void OnInitialized() { Recalculate(); }
+    protected override void OnInitialized()
+    {
+        // 最初の状態をバックアップ
+        BackupText = InputText;
+        Recalculate();
+    }
 
     private void UpdateRoulette(ChangeEventArgs e)
     {
         InputText = e.Value?.ToString() ?? "";
+
+        // 【重要】ユーザーが自分で文字を打った時は、それを「新しい初期状態」としてバックアップする
+        BackupText = InputText;
+
+        Recalculate();
+    }
+
+    // 追加: リセット処理
+    private void ResetList()
+    {
+        // バックアップしておいた内容を書き戻す
+        InputText = BackupText;
         Recalculate();
     }
 
     private void Recalculate()
     {
         var list = InputText.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).ToList();
-
-        // 空っぽになったら仮の文字を入れる
         if (list.Count == 0) list.Add("項目を入力");
-
         DisplayItems = list;
 
         int count = DisplayItems.Count;
@@ -115,15 +136,11 @@
         if (isSpinning) return;
         isSpinning = true;
         showResult = false;
-
-        // 毎回ランダムに回転数を変える
         int extraSpin = random.Next(0, 360);
         rotationAngle += 1800 + extraSpin;
-
         transitionSeconds = 4;
         StateHasChanged();
         await Task.Delay(4100);
-
         CalculateResult(rotationAngle);
         isSpinning = false;
         showResult = true;
@@ -136,27 +153,19 @@
         double normalized = finalAngle % 360;
         double stopAngle = (360 - normalized) % 360;
         int index = (int)(stopAngle / anglePerItem);
-
         if (index >= count) index = 0;
         hitItem = DisplayItems[index];
     }
 
-    // 【重要】結果画面を閉じた時の処理
     private void CloseModal()
     {
         showResult = false;
-
-        // チェックが入っていたら、当たった項目をリストから削除する
         if (removeWinner)
         {
-            // 現在のリストから削除
             var list = InputText.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).ToList();
             list.Remove(hitItem);
-
-            // テキストエリアを更新（これで見た目も消える）
             InputText = string.Join("\n", list);
-
-            // ルーレット再描画
+            // ※ここでは BackupText を更新しない！（削除は一時的なものだから）
             Recalculate();
         }
     }
@@ -179,7 +188,6 @@
         margin-bottom: 10px;
     }
 
-    /* チェックボックスのデザイン */
     .options-area {
         margin-bottom: 15px;
     }
@@ -273,6 +281,14 @@
         filter: drop-shadow(0 2px 2px rgba(0,0,0,0.5));
     }
 
+    /* ボタンエリアのスタイル */
+    .action-buttons {
+        display: flex;
+        flex-direction: column;
+        gap: 15px;
+        align-items: center;
+    }
+
     .btn-spin {
         background: #e74c3c;
         color: white;
@@ -293,6 +309,24 @@
             background: #7f8c8d;
             cursor: not-allowed;
             box-shadow: none;
+        }
+
+    /* リセットボタンのデザイン */
+    .btn-reset {
+        background: transparent;
+        color: #bdc3c7;
+        border: 2px solid #bdc3c7;
+        padding: 10px 20px;
+        border-radius: 30px;
+        font-size: 1rem;
+        cursor: pointer;
+        transition: 0.3s;
+    }
+
+        .btn-reset:hover {
+            background: rgba(255,255,255,0.1);
+            color: white;
+            border-color: white;
         }
 
     .modal-overlay {
