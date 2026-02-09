@@ -1,0 +1,327 @@
+﻿@page "/roulette"
+@using System.Threading
+
+<PageTitle>Dynamic Roulette Fixed</PageTitle>
+
+<div class="casino-table">
+    <div class="title-area">
+        <h1>🎯 完全カスタム・ルーレット</h1>
+        <p>項目を入れると即座に反映されます</p>
+    </div>
+
+    <div class="input-area">
+        <textarea value="@InputText" @oninput="UpdateRoulette" placeholder="（例）&#10;焼肉&#10;寿司&#10;パスタ"></textarea>
+    </div>
+
+    <div class="roulette-container">
+        <div class="marker">▼</div>
+
+        <div class="wheel-border">
+            <div class="wheel" style="transform: rotate(@(rotationAngle)deg); transition: transform @(transitionSeconds)s cubic-bezier(0.25, 0.1, 0.25, 1); background: @CurrentGradient;">
+
+                @for (int i = 0; i < DisplayItems.Count; i++)
+                {
+                    var item = DisplayItems[i];
+                    double stepAngle = 360.0 / DisplayItems.Count;
+                    double currentAngle = (i * stepAngle) + (stepAngle / 2);
+
+                    <div class="segment-text" style="transform: rotate(@(currentAngle)deg)">
+                        <span class="text">@item</span>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+
+    <button class="btn-spin" @onclick="SpinWheel" disabled="@isSpinning">
+        @if (isSpinning)
+        {
+            <span>抽選中...</span>
+        }
+        else
+        {
+
+            <span>スタート！</span>
+        }
+    </button>
+</div>
+
+@if (showResult)
+{
+    <div class="modal-overlay" @onclick="CloseModal">
+        <div class="modal-content">
+            <p class="modal-title">結果は...</p>
+            <div class="result-text">@hitItem</div>
+            <button class="btn-close" @onclick="CloseModal">閉じる</button>
+        </div>
+    </div>
+}
+
+@code {
+    // 初期値
+    private string InputText = "1位\n2位\n3位";
+
+    // 画面表示用のリスト（これを元に描画します）
+    private List<string> DisplayItems = new List<string>();
+
+    // 背景色CSS
+    private string CurrentGradient = "";
+
+    private double rotationAngle = 0;
+    private double transitionSeconds = 0;
+    private bool isSpinning = false;
+    private bool showResult = false;
+    private string hitItem = "";
+    private Random random = new Random();
+
+    // カラーパレット
+    private string[] Colors = new[] { "#FF5733", "#33FF57", "#3357FF", "#FF33A8", "#FFC300", "#8E44AD", "#3498DB", "#E67E22" };
+
+    // 初期化時に一度計算する
+    protected override void OnInitialized()
+    {
+        Recalculate();
+    }
+
+    // 【修正点】文字が打たれるたびに呼ばれる処理
+    private void UpdateRoulette(ChangeEventArgs e)
+    {
+        // 入力された文字を取得して更新
+        InputText = e.Value?.ToString() ?? "";
+        Recalculate();
+    }
+
+    // リストと背景色を再計算するメソッド
+    private void Recalculate()
+    {
+        // リストの更新
+        var list = InputText.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).ToList();
+        if (list.Count == 0) list.Add("項目を入力");
+        DisplayItems = list;
+
+        // 背景色（グラデーション）の更新
+        int count = DisplayItems.Count;
+        double step = 100.0 / count;
+        var gradientParts = new List<string>();
+
+        for (int i = 0; i < count; i++)
+        {
+            string color = Colors[i % Colors.Length];
+            gradientParts.Add($"{color} {i * step}% {(i + 1) * step}%");
+        }
+        CurrentGradient = $"conic-gradient({string.Join(", ", gradientParts)})";
+    }
+
+    private async Task SpinWheel()
+    {
+        if (isSpinning) return;
+
+        isSpinning = true;
+        showResult = false;
+
+        int extraSpin = random.Next(0, 360);
+        rotationAngle += 1800 + extraSpin;
+
+        transitionSeconds = 4;
+        StateHasChanged();
+
+        await Task.Delay(4100);
+
+        CalculateResult(rotationAngle);
+        isSpinning = false;
+        showResult = true;
+    }
+
+    private void CalculateResult(double finalAngle)
+    {
+        int count = DisplayItems.Count;
+        double anglePerItem = 360.0 / count;
+        double normalized = finalAngle % 360;
+        double stopAngle = (360 - normalized) % 360;
+
+        int index = (int)(stopAngle / anglePerItem);
+        if (index >= count) index = 0;
+
+        hitItem = DisplayItems[index];
+    }
+
+    private void CloseModal()
+    {
+        showResult = false;
+    }
+}
+
+<style>
+    .casino-table {
+        background-color: #2c3e50;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        font-family: 'Helvetica Neue', Arial, sans-serif;
+        color: white;
+        padding: 20px;
+    }
+
+    .title-area {
+        text-align: center;
+        margin-bottom: 20px;
+    }
+
+    .input-area {
+        width: 100%;
+        max-width: 300px;
+        margin-bottom: 20px;
+    }
+
+    textarea {
+        width: 100%;
+        height: 80px;
+        padding: 10px;
+        border-radius: 8px;
+        border: none;
+        font-size: 16px;
+        resize: vertical;
+    }
+
+    .roulette-container {
+        position: relative;
+        margin-bottom: 30px;
+    }
+
+    .wheel-border {
+        width: 320px;
+        height: 320px;
+        border-radius: 50%;
+        background: white;
+        padding: 5px;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+    }
+
+    .wheel {
+        width: 100%;
+        height: 100%;
+        border-radius: 50%;
+        position: relative;
+    }
+
+    .segment-text {
+        position: absolute;
+        width: 100%;
+        height: 100%;
+        top: 0;
+        left: 0;
+        display: flex;
+        justify-content: center;
+        pointer-events: none;
+    }
+
+    .text {
+        margin-top: 20px;
+        font-weight: bold;
+        color: white;
+        font-size: 18px;
+        text-shadow: 1px 1px 3px rgba(0,0,0,0.8);
+        writing-mode: vertical-rl;
+        max-height: 100px;
+    }
+
+    .marker {
+        position: absolute;
+        top: -25px;
+        left: 50%;
+        transform: translateX(-50%);
+        font-size: 40px;
+        color: #e74c3c;
+        z-index: 10;
+        filter: drop-shadow(0 2px 2px rgba(0,0,0,0.5));
+    }
+
+    .btn-spin {
+        background: #e74c3c;
+        color: white;
+        padding: 15px 60px;
+        font-size: 1.5rem;
+        border-radius: 50px;
+        border: none;
+        cursor: pointer;
+        box-shadow: 0 5px 0 #c0392b;
+    }
+
+        .btn-spin:active {
+            transform: translateY(5px);
+            box-shadow: none;
+        }
+
+        .btn-spin:disabled {
+            background: #7f8c8d;
+            cursor: not-allowed;
+        }
+
+    .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.7);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 100;
+        animation: fadeIn 0.3s;
+    }
+
+    .modal-content {
+        background: white;
+        padding: 40px;
+        border-radius: 15px;
+        text-align: center;
+        color: #333;
+        min-width: 300px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        animation: popUp 0.4s;
+    }
+
+    .modal-title {
+        font-size: 1.2rem;
+        color: #7f8c8d;
+        margin-bottom: 5px;
+    }
+
+    .result-text {
+        font-size: 3rem;
+        font-weight: bold;
+        color: #e74c3c;
+        margin-bottom: 20px;
+    }
+
+    .btn-close {
+        padding: 10px 30px;
+        background: #333;
+        color: white;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+    }
+
+    @@keyframes popUp {
+        from {
+            transform: scale(0.5);
+        }
+
+        to {
+            transform: scale(1);
+        }
+    }
+
+    @@keyframes fadeIn {
+        from {
+            opacity: 0;
+        }
+
+        to {
+            opacity: 1;
+        }
+    }
+</style>
