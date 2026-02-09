@@ -55,6 +55,10 @@
         <button class="btn-reset" @onclick="ResetList" disabled="@isSpinning">
             🔄 最初の状態に戻す
         </button>
+
+        <button class="btn-mirumo" @onclick="OpenMirumo">
+            🧚‍♀️ ミルモでポ！
+        </button>
     </div>
 </div>
 
@@ -72,6 +76,16 @@
     </div>
 }
 
+@if (showMirumo)
+{
+    <div class="modal-overlay" @onclick="CloseMirumo">
+        <div class="modal-content mirumo-style">
+            <div class="mirumo-text">ミルモでポ！</div>
+            <button class="btn-close" @onclick="CloseMirumo">閉じる</button>
+        </div>
+    </div>
+}
+
 @code {
     private string InputText = "A賞\nB賞\nWin1\nWin2\n大当たり";
     private string BackupText = "";
@@ -84,6 +98,10 @@
     private double transitionSeconds = 0;
     private bool isSpinning = false;
     private bool showResult = false;
+
+    // ミルモ表示フラグ
+    private bool showMirumo = false;
+
     private string hitItem = "";
     private Random random = new Random();
     private string[] Colors = new[] { "#FF5733", "#33FF57", "#3357FF", "#FF33A8", "#FFC300", "#8E44AD", "#3498DB", "#E67E22" };
@@ -105,6 +123,16 @@
     {
         InputText = BackupText;
         Recalculate();
+    }
+
+    private void OpenMirumo()
+    {
+        showMirumo = true;
+    }
+
+    private void CloseMirumo()
+    {
+        showMirumo = false;
     }
 
     private void Recalculate()
@@ -129,6 +157,7 @@
         if (isSpinning) return;
         isSpinning = true;
         showResult = false;
+        showMirumo = false;
         int extraSpin = random.Next(0, 360);
         rotationAngle += 1800 + extraSpin;
         transitionSeconds = 4;
@@ -322,6 +351,39 @@
             border-color: white;
         }
 
+    /* ミルモボタン */
+    .btn-mirumo {
+        background: #ff69b4;
+        color: white;
+        border: 2px solid white;
+        padding: 8px 20px;
+        border-radius: 30px;
+        font-size: 1rem;
+        cursor: pointer;
+        font-weight: bold;
+        box-shadow: 0 4px 0 #c71585;
+        margin-top: 10px;
+    }
+
+        .btn-mirumo:active {
+            transform: translateY(4px);
+            box-shadow: none;
+        }
+
+    /* ミルモポップアップ */
+    .mirumo-style {
+        border: 5px solid #ff69b4;
+        background-color: #fff0f5;
+    }
+
+    .mirumo-text {
+        font-size: 2.5rem;
+        font-weight: bold;
+        color: #ff1493;
+        margin: 20px 0;
+        animation: bounce 0.5s infinite alternate;
+    }
+
     .modal-overlay {
         position: fixed;
         top: 0;
@@ -393,6 +455,16 @@
 
         to {
             opacity: 1;
+        }
+    }
+
+    @@keyframes bounce {
+        from {
+            transform: translateY(0);
+        }
+
+        to {
+            transform: translateY(-10px);
         }
     }
 </style>
