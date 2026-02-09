@@ -6,7 +6,7 @@
 <div class="japan-container">
     <div class="header-area">
         <h1>🗾 都道府県ガチャ</h1>
-        <p>次はどこに行く？ 運命の場所を決めよう！</p>
+        <p>次はどこに行く？ 対象を選んで、運命の場所を決めよう！</p>
     </div>
 
     <div class="result-card">
@@ -16,76 +16,134 @@
         </div>
     </div>
 
-    <button class="btn-gacha" @onclick="DrawPrefecture" disabled="@isShuffling">
-        @if (isShuffling)
-        {
-            <span>抽選中...</span>
-        }
-        else
-        {
+    <div class="action-area">
+        <button class="btn-gacha" @onclick="DrawPrefecture" disabled="@(isShuffling || !PrefectureList.Any(p => p.IsSelected))">
+            @if (isShuffling)
+            {
+                <span>抽選中...</span>
+            }
+            else if (!PrefectureList.Any(p => p.IsSelected))
+            {
 
-            <span>ガチャを回す！</span>
-        }
-    </button>
+                <span>対象を選んで！</span>
+            }
+            else
+            {
+
+                <span>ガチャを回す！</span>
+            }
+        </button>
+    </div>
+
+    <div class="settings-box">
+        <div class="settings-header">
+            <h3>📍 抽選対象を選択 (@(PrefectureList.Count(p => p.IsSelected)) / 47)</h3>
+            <div class="bulk-buttons">
+                <button class="btn-sm" @onclick="SelectAll">全選択</button>
+                <button class="btn-sm" @onclick="DeselectAll">全解除</button>
+            </div>
+        </div>
+
+        <div class="prefecture-grid">
+            @foreach (var pref in PrefectureList)
+            {
+                <label class="pref-item @(pref.IsSelected ? "active" : "")">
+                    <input type="checkbox" @bind="pref.IsSelected" />
+                    @pref.Name
+                </label>
+            }
+        </div>
+    </div>
 </div>
 
 @code {
-    // 47都道府県データ
-    private readonly string[] PrefectureList = new[]
+    // 都道府県ごとの設定を持つクラス
+    class PrefectureItem
     {
-        "北海道", "青森県", "岩手県", "宮城県", "秋田県", "山形県", "福島県",
-        "茨城県", "栃木県", "群馬県", "埼玉県", "千葉県", "東京都", "神奈川県",
-        "新潟県", "富山県", "石川県", "福井県", "山梨県", "長野県", "岐阜県",
-        "静岡県", "愛知県", "三重県", "滋賀県", "京都府", "大阪府", "兵庫県",
-        "奈良県", "和歌山県", "鳥取県", "島根県", "岡山県", "広島県", "山口県",
-        "徳島県", "香川県", "愛媛県", "高知県", "福岡県", "佐賀県", "長崎県",
-        "熊本県", "大分県", "宮崎県", "鹿児島県", "沖縄県"
-    };
+        public string Name { get; set; } = "";
+        public bool IsSelected { get; set; } = true;
+    }
+
+    // 修正: 変数名を Prefectures から PrefectureList に変更して、クラス名との衝突を回避
+    private List<PrefectureItem> PrefectureList = new List<PrefectureItem>();
 
     private string CurrentPrefecture = "？？？";
     private bool isShuffling = false;
     private Random random = new Random();
 
+    // 初期化時にリストを作成
+    protected override void OnInitialized()
+    {
+        var names = new[]
+        {
+            "北海道", "青森県", "岩手県", "宮城県", "秋田県", "山形県", "福島県",
+            "茨城県", "栃木県", "群馬県", "埼玉県", "千葉県", "東京都", "神奈川県",
+            "新潟県", "富山県", "石川県", "福井県", "山梨県", "長野県", "岐阜県",
+            "静岡県", "愛知県", "三重県", "滋賀県", "京都府", "大阪府", "兵庫県",
+            "奈良県", "和歌山県", "鳥取県", "島根県", "岡山県", "広島県", "山口県",
+            "徳島県", "香川県", "愛媛県", "高知県", "福岡県", "佐賀県", "長崎県",
+            "熊本県", "大分県", "宮崎県", "鹿児島県", "沖縄県"
+        };
+
+        foreach (var name in names)
+        {
+            // 修正: Prefectures → PrefectureList
+            PrefectureList.Add(new PrefectureItem { Name = name, IsSelected = true });
+        }
+    }
+
+    // 全選択
+    private void SelectAll()
+    {
+        // 修正: Prefectures → PrefectureList
+        foreach (var p in PrefectureList) p.IsSelected = true;
+    }
+
+    // 全解除
+    private void DeselectAll()
+    {
+        // 修正: Prefectures → PrefectureList
+        foreach (var p in PrefectureList) p.IsSelected = false;
+    }
+
+    // ガチャ実行
     private async Task DrawPrefecture()
     {
-        if (isShuffling) return;
+        // 修正: Prefectures → PrefectureList
+        var targets = PrefectureList.Where(p => p.IsSelected).ToList();
+
+        if (isShuffling || targets.Count == 0) return;
+
         isShuffling = true;
 
-        // ドラムロール演出（パラパラ変わるアニメーション）
-        // 徐々に遅くなるようにウェイトをかけています
+        // ドラムロール演出
         int loopCount = 20;
         for (int i = 0; i < loopCount; i++)
         {
-            // ランダムに表示
-            CurrentPrefecture = PrefectureList[random.Next(PrefectureList.Length)];
+            CurrentPrefecture = targets[random.Next(targets.Count)].Name;
             StateHasChanged();
-
-            // 最初は速く、だんだん遅くする
-            int delay = 50 + (i * 10);
-            await Task.Delay(delay);
+            await Task.Delay(50 + (i * 10));
         }
 
-        // 最後に確定演出（もう一度ランダムに引くか、最後の表示を正とするかはお好みで。今回は最後の表示を確定とします）
         isShuffling = false;
     }
 }
 
 <style>
-    /* 全体のデザイン（和風モダン） */
     .japan-container {
         background-color: #2c3e50;
         min-height: 100vh;
         display: flex;
         flex-direction: column;
         align-items: center;
-        padding: 30px;
+        padding: 20px;
         color: white;
         font-family: 'Helvetica Neue', Arial, sans-serif;
     }
 
     .header-area {
         text-align: center;
-        margin-bottom: 40px;
+        margin-bottom: 20px;
     }
 
         .header-area h1 {
@@ -95,52 +153,55 @@
             padding-bottom: 10px;
         }
 
-    /* 結果カードのデザイン */
+    /* 結果カード */
     .result-card {
         background: white;
         color: #333;
-        width: 300px;
-        height: 200px;
+        width: 90%;
+        max-width: 350px;
+        height: 150px;
         border-radius: 15px;
         display: flex;
         flex-direction: column;
         justify-content: center;
         align-items: center;
-        margin-bottom: 40px;
+        margin-bottom: 20px;
         box-shadow: 0 10px 25px rgba(0,0,0,0.5);
         border: 5px solid #ecf0f1;
     }
 
     .result-label {
-        font-size: 1rem;
+        font-size: 0.9rem;
         color: #7f8c8d;
-        margin-bottom: 10px;
+        margin-bottom: 5px;
     }
 
     .result-text {
-        font-size: 3rem;
+        font-size: 2.5rem;
         font-weight: bold;
         color: #2c3e50;
     }
 
-        /* 確定した時の色 */
         .result-text.determined {
             color: #e74c3c;
             transform: scale(1.1);
             transition: transform 0.2s;
         }
 
-    /* ボタンのデザイン */
+    /* ガチャボタン */
+    .action-area {
+        margin-bottom: 30px;
+    }
+
     .btn-gacha {
         background: linear-gradient(to right, #3498db, #2980b9);
         color: white;
         border: none;
         padding: 15px 50px;
-        font-size: 1.5rem;
+        font-size: 1.3rem;
         border-radius: 50px;
         cursor: pointer;
         box-shadow: 0 5px 15px rgba(52, 152, 219, 0.4);
-        transition: transform 0.1s;
     }
 
         .btn-gacha:active {
@@ -150,5 +211,78 @@
         .btn-gacha:disabled {
             background: #95a5a6;
             cursor: not-allowed;
+            box-shadow: none;
+        }
+
+    /* 設定エリア */
+    .settings-box {
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 15px;
+        padding: 20px;
+        width: 100%;
+        max-width: 800px;
+    }
+
+    .settings-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 15px;
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+
+        .settings-header h3 {
+            margin: 0;
+            font-size: 1.1rem;
+        }
+
+    .btn-sm {
+        background: rgba(255,255,255,0.2);
+        border: 1px solid white;
+        color: white;
+        padding: 5px 10px;
+        border-radius: 5px;
+        cursor: pointer;
+        margin-left: 5px;
+    }
+
+        .btn-sm:hover {
+            background: rgba(255,255,255,0.4);
+        }
+
+    /* グリッドレイアウト */
+    .prefecture-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+        gap: 8px;
+    }
+
+    /* チェックボックスの見た目 */
+    .pref-item {
+        display: block;
+        background: #34495e;
+        padding: 8px 5px;
+        text-align: center;
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 0.9rem;
+        user-select: none;
+        transition: 0.2s;
+        border: 1px solid transparent;
+    }
+
+        .pref-item.active {
+            background: #27ae60;
+            font-weight: bold;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+
+        .pref-item:hover {
+            opacity: 0.8;
+        }
+
+        .pref-item input {
+            display: none;
         }
 </style>
