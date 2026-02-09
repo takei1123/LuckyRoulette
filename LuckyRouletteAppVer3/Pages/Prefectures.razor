@@ -1,0 +1,154 @@
+﻿@page "/prefectures"
+@using System.Threading
+
+<PageTitle>都道府県ガチャ</PageTitle>
+
+<div class="japan-container">
+    <div class="header-area">
+        <h1>🗾 都道府県ガチャ</h1>
+        <p>次はどこに行く？ 運命の場所を決めよう！</p>
+    </div>
+
+    <div class="result-card">
+        <div class="result-label">運命の場所は...</div>
+        <div class="result-text @(isShuffling ? "shuffling" : "determined")">
+            @CurrentPrefecture
+        </div>
+    </div>
+
+    <button class="btn-gacha" @onclick="DrawPrefecture" disabled="@isShuffling">
+        @if (isShuffling)
+        {
+            <span>抽選中...</span>
+        }
+        else
+        {
+
+            <span>ガチャを回す！</span>
+        }
+    </button>
+</div>
+
+@code {
+    // 47都道府県データ
+    private readonly string[] PrefectureList = new[]
+    {
+        "北海道", "青森県", "岩手県", "宮城県", "秋田県", "山形県", "福島県",
+        "茨城県", "栃木県", "群馬県", "埼玉県", "千葉県", "東京都", "神奈川県",
+        "新潟県", "富山県", "石川県", "福井県", "山梨県", "長野県", "岐阜県",
+        "静岡県", "愛知県", "三重県", "滋賀県", "京都府", "大阪府", "兵庫県",
+        "奈良県", "和歌山県", "鳥取県", "島根県", "岡山県", "広島県", "山口県",
+        "徳島県", "香川県", "愛媛県", "高知県", "福岡県", "佐賀県", "長崎県",
+        "熊本県", "大分県", "宮崎県", "鹿児島県", "沖縄県"
+    };
+
+    private string CurrentPrefecture = "？？？";
+    private bool isShuffling = false;
+    private Random random = new Random();
+
+    private async Task DrawPrefecture()
+    {
+        if (isShuffling) return;
+        isShuffling = true;
+
+        // ドラムロール演出（パラパラ変わるアニメーション）
+        // 徐々に遅くなるようにウェイトをかけています
+        int loopCount = 20;
+        for (int i = 0; i < loopCount; i++)
+        {
+            // ランダムに表示
+            CurrentPrefecture = PrefectureList[random.Next(PrefectureList.Length)];
+            StateHasChanged();
+
+            // 最初は速く、だんだん遅くする
+            int delay = 50 + (i * 10);
+            await Task.Delay(delay);
+        }
+
+        // 最後に確定演出（もう一度ランダムに引くか、最後の表示を正とするかはお好みで。今回は最後の表示を確定とします）
+        isShuffling = false;
+    }
+}
+
+<style>
+    /* 全体のデザイン（和風モダン） */
+    .japan-container {
+        background-color: #2c3e50;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 30px;
+        color: white;
+        font-family: 'Helvetica Neue', Arial, sans-serif;
+    }
+
+    .header-area {
+        text-align: center;
+        margin-bottom: 40px;
+    }
+
+        .header-area h1 {
+            font-size: 2rem;
+            border-bottom: 3px solid #e74c3c;
+            display: inline-block;
+            padding-bottom: 10px;
+        }
+
+    /* 結果カードのデザイン */
+    .result-card {
+        background: white;
+        color: #333;
+        width: 300px;
+        height: 200px;
+        border-radius: 15px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        margin-bottom: 40px;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+        border: 5px solid #ecf0f1;
+    }
+
+    .result-label {
+        font-size: 1rem;
+        color: #7f8c8d;
+        margin-bottom: 10px;
+    }
+
+    .result-text {
+        font-size: 3rem;
+        font-weight: bold;
+        color: #2c3e50;
+    }
+
+        /* 確定した時の色 */
+        .result-text.determined {
+            color: #e74c3c;
+            transform: scale(1.1);
+            transition: transform 0.2s;
+        }
+
+    /* ボタンのデザイン */
+    .btn-gacha {
+        background: linear-gradient(to right, #3498db, #2980b9);
+        color: white;
+        border: none;
+        padding: 15px 50px;
+        font-size: 1.5rem;
+        border-radius: 50px;
+        cursor: pointer;
+        box-shadow: 0 5px 15px rgba(52, 152, 219, 0.4);
+        transition: transform 0.1s;
+    }
+
+        .btn-gacha:active {
+            transform: scale(0.95);
+        }
+
+        .btn-gacha:disabled {
+            background: #95a5a6;
+            cursor: not-allowed;
+        }
+</style>
