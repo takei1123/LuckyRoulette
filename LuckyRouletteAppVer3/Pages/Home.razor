@@ -1,5 +1,6 @@
 ﻿@page "/"
 @using System.Threading
+@inject IJSRuntime JSRuntime
 
 <PageTitle>ラッキールーレット</PageTitle>
 
@@ -22,7 +23,7 @@
 
     <div class="roulette-container">
         <div class="marker">▼</div>
-
+        
         <div class="wheel-border">
             <div class="wheel" style="transform: rotate(@(rotationAngle)deg); transition: transform @(transitionSeconds)s cubic-bezier(0.25, 0.1, 0.25, 1); background: @CurrentGradient;">
                 @for (int i = 0; i < DisplayItems.Count; i++)
@@ -41,21 +42,13 @@
 
     <div class="action-buttons">
         <button class="btn-spin" @onclick="SpinWheel" disabled="@(isSpinning || DisplayItems.Count == 0 || (DisplayItems.Count == 1 && DisplayItems[0] == "項目を入力"))">
-            @if (isSpinning)
-            {
-                <span>抽選中...</span>
-            }
-            else
-            {
-
-                <span>スタート！</span>
-            }
+            @if (isSpinning) { <span>抽選中...</span> } else { <span>スタート！</span> }
         </button>
 
         <button class="btn-reset" @onclick="ResetList" disabled="@isSpinning">
             🔄 最初の状態に戻す
         </button>
-
+        
         <button class="btn-mirumo" @onclick="OpenMirumo">
             🧚‍♀️ ミルモでポ！
         </button>
@@ -92,44 +85,75 @@
 
     private List<string> DisplayItems = new List<string>();
     private string CurrentGradient = "";
-    private bool removeWinner = true;
+    private bool removeWinner = true; 
 
     private double rotationAngle = 0;
     private double transitionSeconds = 0;
     private bool isSpinning = false;
     private bool showResult = false;
-
-    // ミルモ表示フラグ
     private bool showMirumo = false;
-
+    
     private string hitItem = "";
     private Random random = new Random();
     private string[] Colors = new[] { "#FF5733", "#33FF57", "#3357FF", "#FF33A8", "#FFC300", "#8E44AD", "#3498DB", "#E67E22" };
 
-    protected override void OnInitialized()
+    // 画面が表示された後にデータを読み込む
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        BackupText = InputText;
-        Recalculate();
+        if (firstRender)
+        {
+            // 保存されたデータを読み込む
+            var savedCurrent = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "roulette-current");
+            var savedBackup = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "roulette-backup");
+
+            if (!string.IsNullOrEmpty(savedCurrent))
+            {
+                InputText = savedCurrent;
+                // バックアップがあれば読み込む、なければ現在の状態をバックアップとする
+                BackupText = !string.IsNullOrEmpty(savedBackup) ? savedBackup : savedCurrent;
+                
+                Recalculate();
+                StateHasChanged(); // 画面更新
+            }
+            else
+            {
+                // 初回起動時はデフォルト値をバックアップ
+                BackupText = InputText;
+            }
+        }
     }
 
-    private void UpdateRoulette(ChangeEventArgs e)
+    private async Task UpdateRoulette(ChangeEventArgs e)
     {
         InputText = e.Value?.ToString() ?? "";
+        // ユーザーが手入力したときは、それを「新しい初期状態」とする
         BackupText = InputText;
+        
         Recalculate();
+        
+        // 保存
+        await SaveData();
     }
 
-    private void ResetList()
+    private async Task ResetList()
     {
         InputText = BackupText;
         Recalculate();
+        await SaveData();
     }
-
+    
+    // データをブラウザに保存する処理
+    private async Task SaveData()
+    {
+        await JSRuntime.InvokeVoidAsync("localStorage.setItem", "roulette-current", InputText);
+        await JSRuntime.InvokeVoidAsync("localStorage.setItem", "roulette-backup", BackupText);
+    }
+    
     private void OpenMirumo()
     {
         showMirumo = true;
     }
-
+    
     private void CloseMirumo()
     {
         showMirumo = false;
@@ -157,9 +181,9 @@
         if (isSpinning) return;
         isSpinning = true;
         showResult = false;
-        showMirumo = false;
-        int extraSpin = random.Next(0, 360);
-        rotationAngle += 1800 + extraSpin;
+        showMirumo = false; 
+        int extraSpin = random.Next(0, 360); 
+        rotationAngle += 1800 + extraSpin; 
         transitionSeconds = 4;
         StateHasChanged();
         await Task.Delay(4100);
@@ -179,8 +203,8 @@
         hitItem = DisplayItems[index];
     }
 
-    private void CloseModal()
-    {
+    private async Task CloseModal() 
+    { 
         showResult = false;
         if (removeWinner)
         {
@@ -188,283 +212,47 @@
             list.Remove(hitItem);
             InputText = string.Join("\n", list);
             Recalculate();
+            
+            // 削除後の状態を保存（バックアップは更新しないのでリセット可能）
+            await JSRuntime.InvokeVoidAsync("localStorage.setItem", "roulette-current", InputText);
         }
     }
 }
 
 <style>
-    .casino-table {
-        background-color: #2c3e50;
-        min-height: 100vh;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        font-family: 'Helvetica Neue', Arial, sans-serif;
-        color: white;
-        padding: 20px;
+    .casino-table { background-color: #2c3e50; min-height: 100vh; display: flex; flex-direction: column; align-items: center; font-family: 'Helvetica Neue', Arial, sans-serif; color: white; padding: 20px; }
+    .title-area { text-align: center; margin-bottom: 10px; }
+    .options-area { margin-bottom: 15px; }
+    .checkbox-label { display: flex; align-items: center; cursor: pointer; background: rgba(255,255,255,0.1); padding: 5px 15px; border-radius: 20px; }
+    .checkbox-label input { transform: scale(1.5); margin-right: 10px; cursor: pointer; }
+    .checkbox-text { font-size: 1.1rem; font-weight: bold; }
+    .input-area { width: 100%; max-width: 300px; margin-bottom: 20px; }
+    textarea { width: 100%; height: 80px; padding: 10px; border-radius: 8px; border: none; font-size: 16px; resize: vertical; }
+    .roulette-container { position: relative; margin-bottom: 30px; }
+    .wheel-border { width: 320px; height: 320px; border-radius: 50%; background: white; padding: 5px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
+    .wheel { width: 100%; height: 100%; border-radius: 50%; position: relative; }
+    
+    .segment-text { 
+        position: absolute; width: 100%; height: 100%; top: 0; left: 0; 
+        display: flex; justify-content: center; pointer-events: none; 
     }
-
-    .title-area {
-        text-align: center;
-        margin-bottom: 10px;
-    }
-
-    .options-area {
-        margin-bottom: 15px;
-    }
-
-    .checkbox-label {
-        display: flex;
-        align-items: center;
-        cursor: pointer;
-        background: rgba(255,255,255,0.1);
-        padding: 5px 15px;
-        border-radius: 20px;
-    }
-
-        .checkbox-label input {
-            transform: scale(1.5);
-            margin-right: 10px;
-            cursor: pointer;
-        }
-
-    .checkbox-text {
-        font-size: 1.1rem;
-        font-weight: bold;
-    }
-
-    .input-area {
-        width: 100%;
-        max-width: 300px;
-        margin-bottom: 20px;
-    }
-
-    textarea {
-        width: 100%;
-        height: 80px;
-        padding: 10px;
-        border-radius: 8px;
-        border: none;
-        font-size: 16px;
-        resize: vertical;
-    }
-
-    .roulette-container {
-        position: relative;
-        margin-bottom: 30px;
-    }
-
-    .wheel-border {
-        width: 320px;
-        height: 320px;
-        border-radius: 50%;
-        background: white;
-        padding: 5px;
-        box-shadow: 0 10px 25px rgba(0,0,0,0.5);
-    }
-
-    .wheel {
-        width: 100%;
-        height: 100%;
-        border-radius: 50%;
-        position: relative;
-    }
-
-    .segment-text {
-        position: absolute;
-        width: 100%;
-        height: 100%;
-        top: 0;
-        left: 0;
-        display: flex;
-        justify-content: center;
-        pointer-events: none;
-    }
-
+    
     .text {
-        margin-top: 25px;
-        font-weight: bold;
-        color: white;
-        font-size: 16px;
+        margin-top: 25px; 
+        font-weight: bold; color: white;
+        font-size: 16px; 
         text-shadow: 1px 1px 3px rgba(0,0,0,0.8);
-        white-space: nowrap;
-        max-width: 130px;
+        white-space: nowrap; 
+        max-width: 130px; 
         overflow: hidden;
-        text-overflow: ellipsis;
+        text-overflow: ellipsis; 
         text-align: center;
     }
 
-    .marker {
-        position: absolute;
-        top: -25px;
-        left: 50%;
-        transform: translateX(-50%);
-        font-size: 40px;
-        color: #e74c3c;
-        z-index: 10;
-        filter: drop-shadow(0 2px 2px rgba(0,0,0,0.5));
-    }
-
-    .action-buttons {
-        display: flex;
-        flex-direction: column;
-        gap: 15px;
-        align-items: center;
-    }
-
-    .btn-spin {
-        background: #e74c3c;
-        color: white;
-        padding: 15px 60px;
-        font-size: 1.5rem;
-        border-radius: 50px;
-        border: none;
-        cursor: pointer;
-        box-shadow: 0 5px 0 #c0392b;
-    }
-
-        .btn-spin:active {
-            transform: translateY(5px);
-            box-shadow: none;
-        }
-
-        .btn-spin:disabled {
-            background: #7f8c8d;
-            cursor: not-allowed;
-            box-shadow: none;
-        }
-
-    .btn-reset {
-        background: transparent;
-        color: #bdc3c7;
-        border: 2px solid #bdc3c7;
-        padding: 10px 20px;
-        border-radius: 30px;
-        font-size: 1rem;
-        cursor: pointer;
-        transition: 0.3s;
-    }
-
-        .btn-reset:hover {
-            background: rgba(255,255,255,0.1);
-            color: white;
-            border-color: white;
-        }
-
-    /* ミルモボタン */
-    .btn-mirumo {
-        background: #ff69b4;
-        color: white;
-        border: 2px solid white;
-        padding: 8px 20px;
-        border-radius: 30px;
-        font-size: 1rem;
-        cursor: pointer;
-        font-weight: bold;
-        box-shadow: 0 4px 0 #c71585;
-        margin-top: 10px;
-    }
-
-        .btn-mirumo:active {
-            transform: translateY(4px);
-            box-shadow: none;
-        }
-
-    /* ミルモポップアップ */
-    .mirumo-style {
-        border: 5px solid #ff69b4;
-        background-color: #fff0f5;
-    }
-
-    .mirumo-text {
-        font-size: 2.5rem;
-        font-weight: bold;
-        color: #ff1493;
-        margin: 20px 0;
-        animation: bounce 0.5s infinite alternate;
-    }
-
-    .modal-overlay {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(0,0,0,0.7);
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        z-index: 100;
-        animation: fadeIn 0.3s;
-    }
-
-    .modal-content {
-        background: white;
-        padding: 40px;
-        border-radius: 15px;
-        text-align: center;
-        color: #333;
-        min-width: 300px;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-        animation: popUp 0.4s;
-    }
-
-    .modal-title {
-        font-size: 1.2rem;
-        color: #7f8c8d;
-        margin-bottom: 5px;
-    }
-
-    .result-text {
-        font-size: 3rem;
-        font-weight: bold;
-        color: #e74c3c;
-        margin-bottom: 10px;
-        word-break: break-all;
-    }
-
-    .modal-note {
-        font-size: 0.9rem;
-        color: #e74c3c;
-        margin-bottom: 20px;
-    }
-
-    .btn-close {
-        padding: 10px 30px;
-        background: #333;
-        color: white;
-        border: none;
-        border-radius: 5px;
-        cursor: pointer;
-    }
-
-    @@keyframes popUp {
-        from {
-            transform: scale(0.5);
-        }
-
-        to {
-            transform: scale(1);
-        }
-    }
-
-    @@keyframes fadeIn {
-        from {
-            opacity: 0;
-        }
-
-        to {
-            opacity: 1;
-        }
-    }
-
-    @@keyframes bounce {
-        from {
-            transform: translateY(0);
-        }
-
-        to {
-            transform: translateY(-10px);
-        }
-    }
-</style>
+    .marker { position: absolute; top: -25px; left: 50%; transform: translateX(-50%); font-size: 40px; color: #e74c3c; z-index: 10; filter: drop-shadow(0 2px 2px rgba(0,0,0,0.5)); }
+    .action-buttons { display: flex; flex-direction: column; gap: 15px; align-items: center; }
+    .btn-spin { background: #e74c3c; color: white; padding: 15px 60px; font-size: 1.5rem; border-radius: 50px; border: none; cursor: pointer; box-shadow: 0 5px 0 #c0392b; }
+    .btn-spin:active { transform: translateY(5px); box-shadow: none; }
+    .btn-spin:disabled { background: #7f8c8d; cursor: not-allowed; box-shadow: none; }
+    .btn-reset { background: transparent; color: #bdc3c7; border: 2px solid #bdc3c7; padding: 10px 20px; border-radius: 30px; font-size: 1rem; cursor: pointer; transition: 0.3s; }
+    .btn-reset:hover
