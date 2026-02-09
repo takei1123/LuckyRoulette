@@ -1,33 +1,32 @@
 ﻿@page "/"
 @using System.Threading
 
-<PageTitle>Dynamic Roulette</PageTitle>
+<PageTitle>Dynamic Roulette Fixed</PageTitle>
 
 <div class="casino-table">
     <div class="title-area">
         <h1>🎯 完全カスタム・ルーレット</h1>
-        <p>項目を入れると、その数に合わせて自動で分割されます</p>
+        <p>項目を入れると即座に反映されます</p>
     </div>
 
     <div class="input-area">
-        <textarea @bind="InputText" @bind:event="oninput" placeholder="（例）&#10;焼肉&#10;寿司&#10;パスタ"></textarea>
+        <textarea value="@InputText" @oninput="UpdateRoulette" placeholder="（例）&#10;焼肉&#10;寿司&#10;パスタ"></textarea>
     </div>
 
     <div class="roulette-container">
         <div class="marker">▼</div>
 
         <div class="wheel-border">
-            <div class="wheel" style="transform: rotate(@(rotationAngle)deg); transition: transform @(transitionSeconds)s cubic-bezier(0.25, 0.1, 0.25, 1); background: @GetConicGradient();">
+            <div class="wheel" style="transform: rotate(@(rotationAngle)deg); transition: transform @(transitionSeconds)s cubic-bezier(0.25, 0.1, 0.25, 1); background: @CurrentGradient;">
 
-                @for (int i = 0; i < GetInputList().Count; i++)
+                @for (int i = 0; i < DisplayItems.Count; i++)
                 {
-                    // 1区画の角度
-                    double stepAngle = 360.0 / GetInputList().Count;
-                    // 文字を配置する角度（区画の中心）
+                    var item = DisplayItems[i];
+                    double stepAngle = 360.0 / DisplayItems.Count;
                     double currentAngle = (i * stepAngle) + (stepAngle / 2);
 
                     <div class="segment-text" style="transform: rotate(@(currentAngle)deg)">
-                        <span class="text">@GetInputList()[i]</span>
+                        <span class="text">@item</span>
                     </div>
                 }
             </div>
@@ -59,7 +58,14 @@
 }
 
 @code {
-    private string InputText = "A\nB\nC\nD\nE";
+    // 初期値
+    private string InputText = "1位\n2位\n3位";
+
+    // 画面表示用のリスト（これを元に描画します）
+    private List<string> DisplayItems = new List<string>();
+
+    // 背景色CSS
+    private string CurrentGradient = "";
 
     private double rotationAngle = 0;
     private double transitionSeconds = 0;
@@ -68,32 +74,42 @@
     private string hitItem = "";
     private Random random = new Random();
 
-    // 綺麗に見える色のパレット
+    // カラーパレット
     private string[] Colors = new[] { "#FF5733", "#33FF57", "#3357FF", "#FF33A8", "#FFC300", "#8E44AD", "#3498DB", "#E67E22" };
 
-    // 入力テキストをリスト化（空行は除外）
-    private List<string> GetInputList()
+    // 初期化時に一度計算する
+    protected override void OnInitialized()
     {
-        var list = InputText.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).ToList();
-        if (list.Count == 0) return new List<string> { "項目を入力" }; // 空の時のガード
-        return list;
+        Recalculate();
     }
 
-    // CSSの conic-gradient（扇形の背景）を動的に作成する文字列
-    private string GetConicGradient()
+    // 【修正点】文字が打たれるたびに呼ばれる処理
+    private void UpdateRoulette(ChangeEventArgs e)
     {
-        var list = GetInputList();
-        int count = list.Count;
-        double step = 100.0 / count; // パーセント計算
+        // 入力された文字を取得して更新
+        InputText = e.Value?.ToString() ?? "";
+        Recalculate();
+    }
 
+    // リストと背景色を再計算するメソッド
+    private void Recalculate()
+    {
+        // リストの更新
+        var list = InputText.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).ToList();
+        if (list.Count == 0) list.Add("項目を入力");
+        DisplayItems = list;
+
+        // 背景色（グラデーション）の更新
+        int count = DisplayItems.Count;
+        double step = 100.0 / count;
         var gradientParts = new List<string>();
+
         for (int i = 0; i < count; i++)
         {
             string color = Colors[i % Colors.Length];
             gradientParts.Add($"{color} {i * step}% {(i + 1) * step}%");
         }
-
-        return $"conic-gradient({string.Join(", ", gradientParts)})";
+        CurrentGradient = $"conic-gradient({string.Join(", ", gradientParts)})";
     }
 
     private async Task SpinWheel()
@@ -109,7 +125,7 @@
         transitionSeconds = 4;
         StateHasChanged();
 
-        await Task.Delay(4100); // 回転時間+少し待機
+        await Task.Delay(4100);
 
         CalculateResult(rotationAngle);
         isSpinning = false;
@@ -118,24 +134,15 @@
 
     private void CalculateResult(double finalAngle)
     {
-        var list = GetInputList();
-        int count = list.Count;
+        int count = DisplayItems.Count;
         double anglePerItem = 360.0 / count;
-
-        // 角度の正規化 (0-360)
         double normalized = finalAngle % 360;
-
-        // 針は上(0度)固定。盤面が回るので、逆算してどの区画が上に来たか求める
-        // 補正：(360 - 回転角度) が「12時から見て右回りに何度ズレたか」
         double stopAngle = (360 - normalized) % 360;
 
-        // どのインデックスの領域か
         int index = (int)(stopAngle / anglePerItem);
-
-        // 配列外参照防止
         if (index >= count) index = 0;
 
-        hitItem = list[index];
+        hitItem = DisplayItems[index];
     }
 
     private void CloseModal()
@@ -196,10 +203,8 @@
         height: 100%;
         border-radius: 50%;
         position: relative;
-        /* 背景はC#側で動的に設定します */
     }
 
-    /* 文字の配置調整 */
     .segment-text {
         position: absolute;
         width: 100%;
@@ -208,17 +213,16 @@
         left: 0;
         display: flex;
         justify-content: center;
-        /* 文字がクリックされないようにする */
         pointer-events: none;
     }
 
     .text {
-        margin-top: 20px; /* 外周からの距離 */
+        margin-top: 20px;
         font-weight: bold;
         color: white;
         font-size: 18px;
         text-shadow: 1px 1px 3px rgba(0,0,0,0.8);
-        writing-mode: vertical-rl; /* 文字を縦書きっぽく中心に向ける */
+        writing-mode: vertical-rl;
         max-height: 100px;
     }
 
