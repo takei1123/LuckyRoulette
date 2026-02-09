@@ -1,11 +1,11 @@
 ﻿@page "/"
 @using System.Threading
 
-<PageTitle>Survival Roulette</PageTitle>
+<PageTitle>ラッキールーレット</PageTitle>
 
 <div class="casino-table">
     <div class="title-area">
-        <h1>🏆 サバイバル・ルーレット</h1>
+        <h1>🏆 ラッキールーレット</h1>
         <p>勝者を削除して最後まで残るのは誰だ！？</p>
     </div>
 
@@ -17,7 +17,7 @@
     </div>
 
     <div class="input-area">
-        <textarea value="@InputText" @oninput="UpdateRoulette" placeholder="（例）&#10;1等&#10;2等&#10;3等"></textarea>
+        <textarea value="@InputText" @oninput="UpdateRoulette" placeholder="（例）&#10;Aさん&#10;Bさん&#10;Guest1&#10;Guest2"></textarea>
     </div>
 
     <div class="roulette-container">
@@ -73,8 +73,7 @@
 }
 
 @code {
-    private string InputText = "A賞\nB賞\nC賞\nD賞\nE賞";
-    // バックアップ用変数
+    private string InputText = "A賞\nB賞\nWin1\nWin2\n大当たり";
     private string BackupText = "";
 
     private List<string> DisplayItems = new List<string>();
@@ -91,7 +90,6 @@
 
     protected override void OnInitialized()
     {
-        // 最初の状態をバックアップ
         BackupText = InputText;
         Recalculate();
     }
@@ -99,17 +97,12 @@
     private void UpdateRoulette(ChangeEventArgs e)
     {
         InputText = e.Value?.ToString() ?? "";
-
-        // 【重要】ユーザーが自分で文字を打った時は、それを「新しい初期状態」としてバックアップする
         BackupText = InputText;
-
         Recalculate();
     }
 
-    // 追加: リセット処理
     private void ResetList()
     {
-        // バックアップしておいた内容を書き戻す
         InputText = BackupText;
         Recalculate();
     }
@@ -165,7 +158,6 @@
             var list = InputText.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).ToList();
             list.Remove(hitItem);
             InputText = string.Join("\n", list);
-            // ※ここでは BackupText を更新しない！（削除は一時的なものだから）
             Recalculate();
         }
     }
@@ -261,13 +253,16 @@
     }
 
     .text {
-        margin-top: 20px;
+        margin-top: 25px;
         font-weight: bold;
         color: white;
-        font-size: 18px;
+        font-size: 16px;
         text-shadow: 1px 1px 3px rgba(0,0,0,0.8);
-        writing-mode: vertical-rl;
-        max-height: 100px;
+        white-space: nowrap;
+        max-width: 130px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        text-align: center;
     }
 
     .marker {
@@ -281,7 +276,6 @@
         filter: drop-shadow(0 2px 2px rgba(0,0,0,0.5));
     }
 
-    /* ボタンエリアのスタイル */
     .action-buttons {
         display: flex;
         flex-direction: column;
@@ -311,7 +305,6 @@
             box-shadow: none;
         }
 
-    /* リセットボタンのデザイン */
     .btn-reset {
         background: transparent;
         color: #bdc3c7;
@@ -365,6 +358,7 @@
         font-weight: bold;
         color: #e74c3c;
         margin-bottom: 10px;
+        word-break: break-all;
     }
 
     .modal-note {
