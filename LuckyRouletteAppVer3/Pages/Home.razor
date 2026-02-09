@@ -1,29 +1,33 @@
 ﻿@page "/"
 @using System.Threading
 
-<PageTitle>Custom Roulette</PageTitle>
+<PageTitle>Dynamic Roulette</PageTitle>
 
 <div class="casino-table">
     <div class="title-area">
-        <h1>🖊️ カスタム・ルーレット</h1>
-        <p>下のボックスに項目を入力してください（改行で区切る）</p>
+        <h1>🎯 完全カスタム・ルーレット</h1>
+        <p>項目を入れると、その数に合わせて自動で分割されます</p>
     </div>
 
     <div class="input-area">
-        <textarea @bind="InputText" @bind:event="oninput" placeholder="ここに項目を入力&#10;例：&#10;ラーメン&#10;カレー&#10;寿司"></textarea>
+        <textarea @bind="InputText" @bind:event="oninput" placeholder="（例）&#10;焼肉&#10;寿司&#10;パスタ"></textarea>
     </div>
 
     <div class="roulette-container">
         <div class="marker">▼</div>
-
+        
         <div class="wheel-border">
-            <div class="wheel" style="transform: rotate(@(rotationAngle)deg); transition: transform @(transitionSeconds)s cubic-bezier(0.25, 0.1, 0.25, 1);">
-                @for (int i = 0; i < 8; i++)
+            <div class="wheel" style="transform: rotate(@(rotationAngle)deg); transition: transform @(transitionSeconds)s cubic-bezier(0.25, 0.1, 0.25, 1); background: @GetConicGradient();">
+                
+                @for (int i = 0; i < GetInputList().Count; i++)
                 {
-                    <div class="segment" style="transform: rotate(@(i * 45)deg)">
-                        <div class="text-container">
-                            <span class="text">@(GetDisplayItem(i))</span>
-                        </div>
+                    // 1区画の角度
+                    double stepAngle = 360.0 / GetInputList().Count;
+                    // 文字を配置する角度（区画の中心）
+                    double currentAngle = (i * stepAngle) + (stepAngle / 2);
+
+                    <div class="segment-text" style="transform: rotate(@(currentAngle)deg)">
+                        <span class="text">@GetInputList()[i]</span>
                     </div>
                 }
             </div>
@@ -31,15 +35,7 @@
     </div>
 
     <button class="btn-spin" @onclick="SpinWheel" disabled="@isSpinning">
-        @if (isSpinning)
-        {
-            <span>回転中...</span>
-        }
-        else
-        {
-
-            <span>スタート！</span>
-        }
+        @if (isSpinning) { <span>抽選中...</span> } else { <span>スタート！</span> }
     </button>
 </div>
 
@@ -47,7 +43,7 @@
 {
     <div class="modal-overlay" @onclick="CloseModal">
         <div class="modal-content">
-            <h2>結果発表</h2>
+            <p class="modal-title">結果は...</p>
             <div class="result-text">@hitItem</div>
             <button class="btn-close" @onclick="CloseModal">閉じる</button>
         </div>
@@ -55,9 +51,8 @@
 }
 
 @code {
-    // 初期値
-    private string InputText = "大吉\n中吉\n小吉\n吉\n末吉\n凶\n大凶\n激レア";
-
+    private string InputText = "A\nB\nC\nD\nE";
+    
     private double rotationAngle = 0;
     private double transitionSeconds = 0;
     private bool isSpinning = false;
@@ -65,21 +60,32 @@
     private string hitItem = "";
     private Random random = new Random();
 
-    // 入力されたテキストをリスト化する
+    // 綺麗に見える色のパレット
+    private string[] Colors = new[] { "#FF5733", "#33FF57", "#3357FF", "#FF33A8", "#FFC300", "#8E44AD", "#3498DB", "#E67E22" };
+
+    // 入力テキストをリスト化（空行は除外）
     private List<string> GetInputList()
     {
-        if (string.IsNullOrWhiteSpace(InputText)) return new List<string> { "項目を入れて" };
-
-        // 改行コードで分割して空行を削除
-        return InputText.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).ToList();
+        var list = InputText.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).ToList();
+        if (list.Count == 0) return new List<string> { "項目を入力" }; // 空の時のガード
+        return list;
     }
 
-    // 8つのスロットに項目を割り当てる（項目が少ない場合は繰り返す）
-    private string GetDisplayItem(int index)
+    // CSSの conic-gradient（扇形の背景）を動的に作成する文字列
+    private string GetConicGradient()
     {
         var list = GetInputList();
-        if (list.Count == 0) return "";
-        return list[index % list.Count]; // 剰余演算でループさせる
+        int count = list.Count;
+        double step = 100.0 / count; // パーセント計算
+        
+        var gradientParts = new List<string>();
+        for (int i = 0; i < count; i++)
+        {
+            string color = Colors[i % Colors.Length];
+            gradientParts.Add($"{color} {i * step}% {(i + 1) * step}%");
+        }
+        
+        return $"conic-gradient({string.Join(", ", gradientParts)})";
     }
 
     private async Task SpinWheel()
@@ -88,14 +94,14 @@
 
         isSpinning = true;
         showResult = false;
-
-        int extraSpin = random.Next(0, 360);
-        rotationAngle += 1800 + extraSpin;
-
+        
+        int extraSpin = random.Next(0, 360); 
+        rotationAngle += 1800 + extraSpin; 
+        
         transitionSeconds = 4;
         StateHasChanged();
 
-        await Task.Delay(4000);
+        await Task.Delay(4100); // 回転時間+少し待機
 
         CalculateResult(rotationAngle);
         isSpinning = false;
@@ -104,12 +110,24 @@
 
     private void CalculateResult(double finalAngle)
     {
-        double normalized = finalAngle % 360;
-        double corrected = (360 - normalized + 22.5) % 360;
-        int index = (int)(corrected / 45);
+        var list = GetInputList();
+        int count = list.Count;
+        double anglePerItem = 360.0 / count;
 
-        // 当たった場所の文字を取得
-        hitItem = GetDisplayItem(index);
+        // 角度の正規化 (0-360)
+        double normalized = finalAngle % 360;
+        
+        // 針は上(0度)固定。盤面が回るので、逆算してどの区画が上に来たか求める
+        // 補正：(360 - 回転角度) が「12時から見て右回りに何度ズレたか」
+        double stopAngle = (360 - normalized) % 360;
+
+        // どのインデックスの領域か
+        int index = (int)(stopAngle / anglePerItem);
+
+        // 配列外参照防止
+        if (index >= count) index = 0;
+        
+        hitItem = list[index];
     }
 
     private void CloseModal()
@@ -120,160 +138,27 @@
 
 <style>
     .casino-table {
-        background-color: #34495e;
+        background-color: #2c3e50;
         min-height: 100vh;
         display: flex;
         flex-direction: column;
         align-items: center;
-        font-family: sans-serif;
+        font-family: 'Helvetica Neue', Arial, sans-serif;
         color: white;
         padding: 20px;
     }
 
-    .title-area {
-        text-align: center;
-        margin-bottom: 20px;
-    }
-
-    /* 入力エリアのデザイン */
-    .input-area {
-        width: 100%;
-        max-width: 320px;
-        margin-bottom: 20px;
-    }
-
+    .title-area { text-align: center; margin-bottom: 20px; }
+    
+    .input-area { width: 100%; max-width: 300px; margin-bottom: 20px; }
     textarea {
-        width: 100%;
-        height: 100px;
-        padding: 10px;
-        border-radius: 10px;
-        border: 2px solid #f1c40f;
-        background: rgba(255, 255, 255, 0.9);
-        font-size: 16px;
-        color: #333;
-        resize: vertical; /* 縦に伸ばせるようにする */
+        width: 100%; height: 80px; padding: 10px;
+        border-radius: 8px; border: none;
+        font-size: 16px; resize: vertical;
     }
 
-    .roulette-container {
-        position: relative;
-        margin-bottom: 30px;
-    }
+    .roulette-container { position: relative; margin-bottom: 30px; }
 
     .wheel-border {
-        width: 300px;
-        height: 300px;
+        width: 320px; height: 320px;
         border-radius: 50%;
-        background: #f1c40f;
-        padding: 8px;
-        box-shadow: 0 10px 20px rgba(0,0,0,0.3);
-    }
-
-    .wheel {
-        width: 100%;
-        height: 100%;
-        border-radius: 50%;
-        position: relative;
-        overflow: hidden;
-        /* カラフルな背景 */
-        background: conic-gradient( #FF5733 0deg 45deg, #FFC300 45deg 90deg, #DAF7A6 90deg 135deg, #33FF57 135deg 180deg, #33FFBD 180deg 225deg, #3380FF 225deg 270deg, #8333FF 270deg 315deg, #FF33A8 315deg 360deg );
-        border: 2px solid white;
-    }
-
-    .segment {
-        position: absolute;
-        width: 100%;
-        height: 100%;
-        top: 0;
-        left: 0;
-        display: flex;
-        justify-content: center;
-    }
-
-    /* 文字を円の外側に見やすく配置する調整 */
-    .text-container {
-        margin-top: 35px; /* 中心からの距離 */
-        width: 80px; /* 文字表示幅 */
-        text-align: center;
-    }
-
-    .text {
-        font-weight: bold;
-        color: white;
-        text-shadow: 1px 1px 2px black;
-        font-size: 14px;
-        word-break: break-all; /* 長い文字は折り返す */
-        display: inline-block;
-        line-height: 1.2;
-    }
-
-    .marker {
-        position: absolute;
-        top: -20px;
-        left: 50%;
-        transform: translateX(-50%);
-        font-size: 40px;
-        color: #e74c3c;
-        z-index: 10;
-        text-shadow: 0 2px 2px rgba(0,0,0,0.3);
-    }
-
-    .btn-spin {
-        background: #e74c3c;
-        color: white;
-        padding: 15px 50px;
-        font-size: 1.4rem;
-        border-radius: 30px;
-        border: none;
-        box-shadow: 0 4px 0 #c0392b;
-        cursor: pointer;
-    }
-
-        .btn-spin:active {
-            transform: translateY(4px);
-            box-shadow: none;
-        }
-
-        .btn-spin:disabled {
-            background: #95a5a6;
-            cursor: not-allowed;
-            box-shadow: none;
-        }
-
-    .modal-overlay {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(0,0,0,0.8);
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        z-index: 100;
-    }
-
-    .modal-content {
-        background: white;
-        padding: 30px;
-        border-radius: 10px;
-        text-align: center;
-        color: #333;
-        width: 80%;
-        max-width: 300px;
-    }
-
-    .result-text {
-        font-size: 2.5rem;
-        font-weight: bold;
-        color: #e74c3c;
-        margin: 20px 0;
-    }
-
-    .btn-close {
-        padding: 10px 20px;
-        background: #333;
-        color: white;
-        border: none;
-        border-radius: 5px;
-    }
-</style>
