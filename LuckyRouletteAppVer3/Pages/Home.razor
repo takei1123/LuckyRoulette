@@ -25,7 +25,7 @@
         <div class="marker">▼</div>
 
         <div class="wheel-border">
-            <div class="wheel" style="transform: rotate(@(rotationAngle)deg); transition: transform @(transitionSeconds)s cubic-bezier(0.25, 0.1, 0.25, 1); background: @CurrentGradient;">
+            <div class="wheel" style="transform: rotate(@(rotationAngle)deg); transition: transform @(transitionSeconds)s cubic-bezier(0.25, 0.1, 0.25, 1); background: @(string.IsNullOrEmpty(CurrentGradient) ? "conic-gradient(#ccc 0% 100%)" : CurrentGradient);">
                 @for (int i = 0; i < DisplayItems.Count; i++)
                 {
                     var item = DisplayItems[i];
@@ -92,7 +92,7 @@
     private string BackupText = "";
 
     private List<string> DisplayItems = new List<string>();
-    private string CurrentGradient = "";
+    private string CurrentGradient = ""; // ここに色が計算されます
     private bool removeWinner = true;
 
     private double rotationAngle = 0;
@@ -105,28 +105,43 @@
     private Random random = new Random();
     private string[] Colors = new[] { "#FF5733", "#33FF57", "#3357FF", "#FF33A8", "#FFC300", "#8E44AD", "#3498DB", "#E67E22" };
 
-    // 画面が表示された後にデータを読み込む
+    // 初期化時にも一度計算しておく
+    protected override void OnInitialized()
+    {
+        Recalculate();
+    }
+
+    // 画面が表示された後にデータを読み込む（ここを修正しました）
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
         {
-            // 保存されたデータを読み込む
-            var savedCurrent = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "roulette-current");
-            var savedBackup = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "roulette-backup");
-
-            if (!string.IsNullOrEmpty(savedCurrent))
+            try
             {
-                InputText = savedCurrent;
-                // バックアップがあれば読み込む、なければ現在の状態をバックアップとする
-                BackupText = !string.IsNullOrEmpty(savedBackup) ? savedBackup : savedCurrent;
+                // 保存されたデータを読み込む
+                var savedCurrent = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "roulette-current");
+                var savedBackup = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "roulette-backup");
 
-                Recalculate();
-                StateHasChanged(); // 画面更新
+                if (!string.IsNullOrEmpty(savedCurrent))
+                {
+                    InputText = savedCurrent;
+                    BackupText = !string.IsNullOrEmpty(savedBackup) ? savedBackup : savedCurrent;
+
+                    // 【修正点】読み込んだ後に必ず再計算し、画面を更新する
+                    Recalculate();
+                    StateHasChanged();
+                }
+                else
+                {
+                    BackupText = InputText;
+                    // 保存データがない場合も初期値で計算して更新
+                    Recalculate();
+                    StateHasChanged();
+                }
             }
-            else
+            catch
             {
-                // 初回起動時はデフォルト値をバックアップ
-                BackupText = InputText;
+                // エラー時は初期値のまま続行
             }
         }
     }
@@ -134,12 +149,9 @@
     private async Task UpdateRoulette(ChangeEventArgs e)
     {
         InputText = e.Value?.ToString() ?? "";
-        // ユーザーが手入力したときは、それを「新しい初期状態」とする
         BackupText = InputText;
 
         Recalculate();
-
-        // 保存
         await SaveData();
     }
 
@@ -150,7 +162,6 @@
         await SaveData();
     }
 
-    // データをブラウザに保存する処理
     private async Task SaveData()
     {
         await JSRuntime.InvokeVoidAsync("localStorage.setItem", "roulette-current", InputText);
@@ -221,7 +232,6 @@
             InputText = string.Join("\n", list);
             Recalculate();
 
-            // 削除後の状態を保存（バックアップは更新しないのでリセット可能）
             await JSRuntime.InvokeVoidAsync("localStorage.setItem", "roulette-current", InputText);
         }
     }
