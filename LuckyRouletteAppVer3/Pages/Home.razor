@@ -50,10 +50,16 @@
     </div>
 
     <div class="options-area">
-        <label class="checkbox-label">
-            <input type="checkbox" @bind="removeWinner" />
-            <span class="checkbox-text">当たった項目を削除する</span>
-        </label>
+        <div class="option-row">
+            <label class="checkbox-label">
+                <input type="checkbox" @bind="removeWinner" />
+                <span class="checkbox-text">当たった項目を削除する</span>
+            </label>
+
+            <button class="btn-bgm @(isBgmOn ? "bgm-on" : "bgm-off")" @onclick="ToggleBgm">
+                @(isBgmOn ? "🔊 BGM: ON" : "🔇 BGM: OFF")
+            </button>
+        </div>
     </div>
 
     <div class="input-area">
@@ -122,6 +128,8 @@
     </div>
 }
 
+<audio id="bgm-player" src="sounds/bgm.mp3" loop></audio>
+
 <audio id="se-drum" src="sounds/drum.mp3" loop></audio>
 <audio id="se-result" src="sounds/result.mp3"></audio>
 <audio id="se-mirumo" src="sounds/mirumo.mp3"></audio>
@@ -141,6 +149,20 @@
             audio.currentTime = 0;
         }
     };
+
+    // ▼▼ 追加: BGM専用の制御関数 ▼▼
+    window.toggleBgm = (play) => {
+        var audio = document.getElementById("bgm-player");
+        if (audio) {
+            if (play) {
+                audio.volume = 0.3; // 音量を30%にする（BGMなので控えめに）
+                audio.play().catch(e => console.log("BGM再生エラー:", e));
+            } else {
+                audio.pause();
+            }
+        }
+    };
+
     window.copyToClipboard = (text) => {
         navigator.clipboard.writeText(text).then(function() { console.log('Copied!'); }, function(err) {});
     };
@@ -170,6 +192,9 @@
 
     private string CurrentGradient = "";
     private bool removeWinner = true;
+
+    // BGMフラグ
+    private bool isBgmOn = false;
 
     private double rotationAngle = 0;
     private double transitionSeconds = 0;
@@ -219,6 +244,14 @@
             }
             catch { }
         }
+    }
+
+    // ▼▼ 追加: BGM切り替え ▼▼
+    private async Task ToggleBgm()
+    {
+        isBgmOn = !isBgmOn;
+        // JavaScriptを呼び出して再生/停止
+        await JSRuntime.InvokeVoidAsync("toggleBgm", isBgmOn);
     }
 
     private void CheckUrlForSharedData()
@@ -434,8 +467,18 @@
         margin-bottom: 10px;
     }
 
+    /* オプションエリアの整理 */
     .options-area {
         margin-bottom: 15px;
+        width: 100%;
+        max-width: 400px;
+    }
+
+    .option-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 10px;
     }
 
     .checkbox-label {
@@ -445,6 +488,7 @@
         background: rgba(255,255,255,0.1);
         padding: 5px 15px;
         border-radius: 20px;
+        flex: 1;
     }
 
         .checkbox-label input {
@@ -454,8 +498,31 @@
         }
 
     .checkbox-text {
-        font-size: 1.1rem;
+        font-size: 1rem;
         font-weight: bold;
+        white-space: nowrap;
+    }
+
+    /* BGMボタン */
+    .btn-bgm {
+        border: none;
+        padding: 5px 15px;
+        border-radius: 20px;
+        font-weight: bold;
+        cursor: pointer;
+        transition: 0.3s;
+        min-width: 120px;
+    }
+
+    .bgm-on {
+        background: #e74c3c;
+        color: white;
+        box-shadow: 0 0 10px rgba(231, 76, 60, 0.5);
+    }
+
+    .bgm-off {
+        background: #7f8c8d;
+        color: #ecf0f1;
     }
 
     .preset-area {
@@ -783,7 +850,6 @@
         margin-bottom: 20px;
     }
 
-    /* 修正: 閉じるボタンのデザイン（衝突回避） */
     .btn-modal-close {
         padding: 10px 30px;
         background: #333;
