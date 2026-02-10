@@ -13,8 +13,11 @@
 
     <div class="preset-area">
         <div class="preset-save">
-            <input class="preset-input" @bind="NewPresetName" placeholder="リスト名（例：ランチ）" />
-            <button class="btn-save" @onclick="SavePreset">💾 リストを保存</button>
+            <input class="preset-input" @bind="NewPresetName" @oninput="CheckOverwrite" placeholder="リスト名（例：ランチ）" />
+
+            <button class="@(IsOverwrite ? "btn-update" : "btn-save")" @onclick="SavePreset">
+                @(IsOverwrite ? "🔄 リストを更新" : "💾 リストを保存")
+            </button>
         </div>
 
         @if (Presets.Count > 0)
@@ -33,6 +36,7 @@
             </div>
         }
     </div>
+
     <div class="options-area">
         <label class="checkbox-label">
             <input type="checkbox" @bind="removeWinner" />
@@ -132,7 +136,6 @@
 </script>
 
 @code {
-    // 保存データ用のクラス
     public class RoulettePreset
     {
         public string Name { get; set; } = "";
@@ -142,9 +145,10 @@
     private string InputText = "A賞\nB賞\nWin1\nWin2\n大当たり";
     private string BackupText = "";
 
-    // プリセット関連
     private List<RoulettePreset> Presets = new List<RoulettePreset>();
     private string NewPresetName = "";
+    // 上書きモードかどうか判定するフラグ
+    private bool IsOverwrite => Presets.Any(p => p.Name == NewPresetName);
 
     private List<string> DisplayItems = new List<string>();
     private string CurrentGradient = "";
@@ -171,11 +175,8 @@
         {
             try
             {
-                // 現在の状態を読み込み
                 var savedCurrent = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "roulette-current");
                 var savedBackup = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "roulette-backup");
-
-                // プリセットリストを読み込み
                 var savedPresets = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "roulette-presets");
 
                 if (!string.IsNullOrEmpty(savedCurrent))
@@ -200,37 +201,51 @@
         }
     }
 
-    // ▼▼ プリセット保存・読込・削除ロジック ▼▼
+    // 入力時に上書きチェックを行う
+    private void CheckOverwrite(ChangeEventArgs e)
+    {
+        NewPresetName = e.Value?.ToString() ?? "";
+    }
+
     private async Task SavePreset()
     {
         if (string.IsNullOrWhiteSpace(NewPresetName)) return;
 
-        // 同じ名前があれば上書き、なければ追加
         var existing = Presets.FirstOrDefault(p => p.Name == NewPresetName);
         if (existing != null)
         {
+            // 上書き更新
             existing.Data = InputText;
         }
         else
         {
+            // 新規作成
             Presets.Add(new RoulettePreset { Name = NewPresetName, Data = InputText });
         }
 
-        NewPresetName = ""; // 入力欄クリア
+        // 入力欄はクリアせず、そのまま残しておくと連続保存しやすいですが、
+        // 今回は「保存した感」を出すためにあえて残したままにします（再保存＝更新になるため）
         await SavePresetsToStorage();
     }
 
     private async Task LoadPreset(RoulettePreset preset)
     {
         InputText = preset.Data;
-        BackupText = preset.Data; // リセット時もこの状態に戻るようにする
+        BackupText = preset.Data;
+
+        // 【重要】読み込んだ時、その名前を入力欄にセットする
+        NewPresetName = preset.Name;
+
         Recalculate();
-        await SaveData(); // 現在の状態として保存
+        await SaveData();
     }
 
     private async Task DeletePreset(RoulettePreset preset)
     {
         Presets.Remove(preset);
+        // もし削除したプリセットの名前が入力欄に残っていたら消す
+        if (NewPresetName == preset.Name) NewPresetName = "";
+
         await SavePresetsToStorage();
     }
 
@@ -239,7 +254,6 @@
         var json = JsonSerializer.Serialize(Presets);
         await JSRuntime.InvokeVoidAsync("localStorage.setItem", "roulette-presets", json);
     }
-    // ▲▲ ここまで ▲▲
 
     private async Task UpdateRoulette(ChangeEventArgs e)
     {
@@ -404,6 +418,7 @@
         font-size: 14px;
     }
 
+    /* 保存ボタン（緑） */
     .btn-save {
         background: #27ae60;
         color: white;
@@ -412,7 +427,28 @@
         border-radius: 5px;
         cursor: pointer;
         font-weight: bold;
+        transition: 0.3s;
     }
+
+        .btn-save:hover {
+            background: #2ecc71;
+        }
+
+    /* 更新ボタン（オレンジ） */
+    .btn-update {
+        background: #e67e22;
+        color: white;
+        border: none;
+        padding: 8px 15px;
+        border-radius: 5px;
+        cursor: pointer;
+        font-weight: bold;
+        transition: 0.3s;
+    }
+
+        .btn-update:hover {
+            background: #d35400;
+        }
 
     .preset-list {
         display: flex;
