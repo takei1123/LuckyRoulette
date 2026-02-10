@@ -1,7 +1,10 @@
 ﻿@page "/"
 @using System.Threading
 @using System.Text.Json
+@using System.Text
+@using System.Web
 @inject IJSRuntime JSRuntime
+@inject NavigationManager NavManager
 
 <PageTitle>ラッキールーレット</PageTitle>
 
@@ -14,10 +17,19 @@
     <div class="preset-area">
         <div class="preset-save">
             <input class="preset-input" @bind="NewPresetName" @oninput="CheckOverwrite" placeholder="リスト名（例：ランチ）" />
-
             <button class="@(IsOverwrite ? "btn-update" : "btn-save")" @onclick="SavePreset">
                 @(IsOverwrite ? "🔄 リストを更新" : "💾 リストを保存")
             </button>
+        </div>
+
+        <div class="share-area">
+            <button class="btn-share" @onclick="CopyShareLink">
+                🔗 このリストを共有（リンクをコピー）
+            </button>
+            @if (showCopyMessage)
+            {
+                <span class="copy-msg">コピーしました！</span>
+            }
         </div>
 
         @if (Presets.Count > 0)
@@ -133,6 +145,14 @@
             audio.currentTime = 0;
         }
     };
+    // クリップボードへのコピー機能
+    window.copyToClipboard = (text) => {
+        navigator.clipboard.writeText(text).then(function() {
+            console.log('Copied!');
+        }, function(err) {
+            console.error('Could not copy text: ', err);
+        });
+    };
 </script>
 
 @code {
@@ -147,8 +167,10 @@
 
     private List<RoulettePreset> Presets = new List<RoulettePreset>();
     private string NewPresetName = "";
-    // 上書きモードかどうか判定するフラグ
     private bool IsOverwrite => Presets.Any(p => p.Name == NewPresetName);
+
+    // 共有用
+    private bool showCopyMessage = false;
 
     private List<string> DisplayItems = new List<string>();
     private string CurrentGradient = "";
@@ -166,6 +188,8 @@
 
     protected override void OnInitialized()
     {
+        // ▼ URLにデータが含まれているかチェックする処理 ▼
+        CheckUrlForSharedData();
         Recalculate();
     }
 
@@ -175,33 +199,94 @@
         {
             try
             {
-                var savedCurrent = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "roulette-current");
-                var savedBackup = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "roulette-backup");
+                // URLからデータが読み込まれていなければ、ローカルストレージを使う
+                // (URL共有で開いた場合はローカルストレージを上書きしないようにする制御も可能ですが、
+                //  今回はシンプルに「URL優先、なければローカル」にします)
+
+                var uri = NavManager.ToAbsoluteUri(NavManager.Uri);
+                bool hasShareData = System.Web.HttpUtility.ParseQueryString(uri.Query).Get("data") != null;
+
+                if (!hasShareData)
+                {
+                    var savedCurrent = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "roulette-current");
+                    var savedBackup = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "roulette-backup");
+
+                    if (!string.IsNullOrEmpty(savedCurrent))
+                    {
+                        InputText = savedCurrent;
+                        BackupText = !string.IsNullOrEmpty(savedBackup) ? savedBackup : savedCurrent;
+                        Recalculate();
+                        StateHasChanged();
+                    }
+                }
+
+                // プリセット読み込み
                 var savedPresets = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "roulette-presets");
-
-                if (!string.IsNullOrEmpty(savedCurrent))
-                {
-                    InputText = savedCurrent;
-                    BackupText = !string.IsNullOrEmpty(savedBackup) ? savedBackup : savedCurrent;
-                }
-                else
-                {
-                    BackupText = InputText;
-                }
-
                 if (!string.IsNullOrEmpty(savedPresets))
                 {
                     Presets = JsonSerializer.Deserialize<List<RoulettePreset>>(savedPresets) ?? new List<RoulettePreset>();
+                    StateHasChanged();
                 }
-
-                Recalculate();
-                StateHasChanged();
             }
             catch { }
         }
     }
 
-    // 入力時に上書きチェックを行う
+    // ▼ URLからデータを読み取る機能 ▼
+    private void CheckUrlForSharedData()
+    {
+        try
+        {
+            var uri = NavManager.ToAbsoluteUri(NavManager.Uri);
+            var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
+            var data = query.Get("data");
+
+            if (!string.IsNullOrEmpty(data))
+            {
+                // Base64から元の文字列に戻す
+                var bytes = Convert.FromBase64String(data);
+                var decodedText = Encoding.UTF8.GetString(bytes);
+
+                InputText = decodedText;
+                BackupText = decodedText; // 共有されたデータをバックアップにも設定
+
+                // URLを綺麗にする（?data=... を消す）
+                // ※Blazor WebAssemblyなら可能ですが、ここではシンプルに読み込みだけ行います
+            }
+        }
+        catch
+        {
+            // URLがおかしい場合は無視
+        }
+    }
+
+    // ▼ 共有リンクを生成してコピーする機能 ▼
+    private async Task CopyShareLink()
+    {
+        // 現在のリストをBase64に変換
+        var bytes = Encoding.UTF8.GetBytes(InputText);
+        var base64 = Convert.ToBase64String(bytes);
+
+        // URLエンコード（記号対策）
+        var encodedData = System.Web.HttpUtility.UrlEncode(base64);
+
+        // 基本のURLを取得
+        var baseUrl = NavManager.BaseUri;
+
+        // 共有用URLを作成
+        var shareUrl = $"{baseUrl}?data={encodedData}";
+
+        // クリップボードにコピー
+        await JSRuntime.InvokeVoidAsync("copyToClipboard", shareUrl);
+
+        // 「コピーしました」メッセージを表示
+        showCopyMessage = true;
+        StateHasChanged();
+        await Task.Delay(2000);
+        showCopyMessage = false;
+        StateHasChanged();
+    }
+
     private void CheckOverwrite(ChangeEventArgs e)
     {
         NewPresetName = e.Value?.ToString() ?? "";
@@ -214,17 +299,12 @@
         var existing = Presets.FirstOrDefault(p => p.Name == NewPresetName);
         if (existing != null)
         {
-            // 上書き更新
             existing.Data = InputText;
         }
         else
         {
-            // 新規作成
             Presets.Add(new RoulettePreset { Name = NewPresetName, Data = InputText });
         }
-
-        // 入力欄はクリアせず、そのまま残しておくと連続保存しやすいですが、
-        // 今回は「保存した感」を出すためにあえて残したままにします（再保存＝更新になるため）
         await SavePresetsToStorage();
     }
 
@@ -232,10 +312,7 @@
     {
         InputText = preset.Data;
         BackupText = preset.Data;
-
-        // 【重要】読み込んだ時、その名前を入力欄にセットする
         NewPresetName = preset.Name;
-
         Recalculate();
         await SaveData();
     }
@@ -243,9 +320,7 @@
     private async Task DeletePreset(RoulettePreset preset)
     {
         Presets.Remove(preset);
-        // もし削除したプリセットの名前が入力欄に残っていたら消す
         if (NewPresetName == preset.Name) NewPresetName = "";
-
         await SavePresetsToStorage();
     }
 
@@ -394,7 +469,6 @@
         font-weight: bold;
     }
 
-    /* プリセットエリアのデザイン */
     .preset-area {
         width: 100%;
         max-width: 400px;
@@ -418,7 +492,6 @@
         font-size: 14px;
     }
 
-    /* 保存ボタン（緑） */
     .btn-save {
         background: #27ae60;
         color: white;
@@ -434,7 +507,6 @@
             background: #2ecc71;
         }
 
-    /* 更新ボタン（オレンジ） */
     .btn-update {
         background: #e67e22;
         color: white;
@@ -449,6 +521,38 @@
         .btn-update:hover {
             background: #d35400;
         }
+
+    /* 共有ボタンのデザイン */
+    .share-area {
+        margin-bottom: 15px;
+        text-align: center;
+    }
+
+    .btn-share {
+        background: #34495e;
+        border: 1px solid #7f8c8d;
+        color: #ecf0f1;
+        width: 100%;
+        padding: 8px;
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 0.9rem;
+        transition: 0.3s;
+    }
+
+        .btn-share:hover {
+            background: #2c3e50;
+            border-color: white;
+        }
+
+    .copy-msg {
+        color: #2ecc71;
+        font-weight: bold;
+        font-size: 0.9rem;
+        display: block;
+        margin-top: 5px;
+        animation: fadeIn 0.3s;
+    }
 
     .preset-list {
         display: flex;
