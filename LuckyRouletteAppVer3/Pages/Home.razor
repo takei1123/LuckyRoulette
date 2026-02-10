@@ -11,14 +11,14 @@
 <div class="casino-table">
     <div class="title-area">
         <h1>🏆 ラッキールーレット</h1>
-        <p>回せ運命！ 減らせ選択肢！ 最後に笑うのはアイツだ！</p>
+        <p>「項目名:数字」で確率を変更できます（例：大当たり:1  ハズレ:10）</p>
     </div>
 
     <div class="preset-area">
         <div class="preset-save">
-            <input class="preset-input" @bind="NewPresetName" @oninput="CheckOverwrite" placeholder="リスト名（例：ランチ）" />
+            <input class="preset-input" @bind="NewPresetName" @oninput="CheckOverwrite" placeholder="リスト名（例：忘年会）" />
             <button class="@(IsOverwrite ? "btn-update" : "btn-save")" @onclick="SavePreset">
-                @(IsOverwrite ? "🔄 リストを更新" : "💾 リストを保存")
+                @(IsOverwrite ? "🔄 更新" : "💾 保存")
             </button>
         </div>
 
@@ -57,7 +57,7 @@
     </div>
 
     <div class="input-area">
-        <textarea value="@InputText" @oninput="UpdateRoulette" placeholder="（例）&#10;Aさん&#10;Bさん&#10;Guest1&#10;Guest2"></textarea>
+        <textarea value="@InputText" @oninput="UpdateRoulette" placeholder="（例）&#10;1等:1&#10;2等:3&#10;参加賞:10"></textarea>
     </div>
 
     <div class="roulette-container">
@@ -65,14 +65,10 @@
 
         <div class="wheel-border">
             <div class="wheel" style="transform: rotate(@(rotationAngle)deg); transition: transform @(transitionSeconds)s cubic-bezier(0.25, 0.1, 0.25, 1); background: @(string.IsNullOrEmpty(CurrentGradient) ? "conic-gradient(#ccc 0% 100%)" : CurrentGradient);">
-                @for (int i = 0; i < DisplayItems.Count; i++)
+                @foreach (var seg in Segments)
                 {
-                    var item = DisplayItems[i];
-                    double stepAngle = 360.0 / DisplayItems.Count;
-                    double currentAngle = (i * stepAngle) + (stepAngle / 2);
-
-                    <div class="segment-text" style="transform: rotate(@(currentAngle)deg)">
-                        <span class="text">@item</span>
+                    <div class="segment-text" style="transform: rotate(@(seg.CenterAngle)deg)">
+                        <span class="text">@seg.Name</span>
                     </div>
                 }
             </div>
@@ -80,7 +76,7 @@
     </div>
 
     <div class="action-buttons">
-        <button class="btn-spin" @onclick="SpinWheel" disabled="@(isSpinning || DisplayItems.Count == 0 || (DisplayItems.Count == 1 && DisplayItems[0] == "項目を入力"))">
+        <button class="btn-spin" @onclick="SpinWheel" disabled="@(isSpinning || Segments.Count == 0 || (Segments.Count == 1 && Segments[0].Name == "項目を入力"))">
             @if (isSpinning)
             {
                 <span>抽選中...</span>
@@ -145,34 +141,36 @@
             audio.currentTime = 0;
         }
     };
-    // クリップボードへのコピー機能
     window.copyToClipboard = (text) => {
-        navigator.clipboard.writeText(text).then(function() {
-            console.log('Copied!');
-        }, function(err) {
-            console.error('Could not copy text: ', err);
-        });
+        navigator.clipboard.writeText(text).then(function() { console.log('Copied!'); }, function(err) {});
     };
 </script>
 
 @code {
-    public class RoulettePreset
+    // プリセット用クラス
+    public class RoulettePreset { public string Name { get; set; } = ""; public string Data { get; set; } = ""; }
+
+    // ルーレットの1区画を表すクラス
+    public class RouletteSegment
     {
         public string Name { get; set; } = "";
-        public string Data { get; set; } = "";
+        public int Weight { get; set; } = 1;      // 重み（確率）
+        public double StartAngle { get; set; }    // 開始角度
+        public double EndAngle { get; set; }      // 終了角度
+        public double CenterAngle => StartAngle + (EndAngle - StartAngle) / 2; // 文字を表示する角度
     }
 
-    private string InputText = "A賞\nB賞\nWin1\nWin2\n大当たり";
+    private string InputText = "1等:1\n2等:3\n3等:5\nハズレ:10";
     private string BackupText = "";
 
     private List<RoulettePreset> Presets = new List<RoulettePreset>();
     private string NewPresetName = "";
     private bool IsOverwrite => Presets.Any(p => p.Name == NewPresetName);
-
-    // 共有用
     private bool showCopyMessage = false;
 
-    private List<string> DisplayItems = new List<string>();
+    // 表示用セグメントリスト
+    private List<RouletteSegment> Segments = new List<RouletteSegment>();
+
     private string CurrentGradient = "";
     private bool removeWinner = true;
 
@@ -188,7 +186,6 @@
 
     protected override void OnInitialized()
     {
-        // ▼ URLにデータが含まれているかチェックする処理 ▼
         CheckUrlForSharedData();
         Recalculate();
     }
@@ -199,10 +196,6 @@
         {
             try
             {
-                // URLからデータが読み込まれていなければ、ローカルストレージを使う
-                // (URL共有で開いた場合はローカルストレージを上書きしないようにする制御も可能ですが、
-                //  今回はシンプルに「URL優先、なければローカル」にします)
-
                 var uri = NavManager.ToAbsoluteUri(NavManager.Uri);
                 bool hasShareData = System.Web.HttpUtility.ParseQueryString(uri.Query).Get("data") != null;
 
@@ -220,7 +213,6 @@
                     }
                 }
 
-                // プリセット読み込み
                 var savedPresets = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "roulette-presets");
                 if (!string.IsNullOrEmpty(savedPresets))
                 {
@@ -232,7 +224,7 @@
         }
     }
 
-    // ▼ URLからデータを読み取る機能 ▼
+    // ▼ URL共有 ▼
     private void CheckUrlForSharedData()
     {
         try
@@ -243,43 +235,24 @@
 
             if (!string.IsNullOrEmpty(data))
             {
-                // Base64から元の文字列に戻す
                 var bytes = Convert.FromBase64String(data);
                 var decodedText = Encoding.UTF8.GetString(bytes);
-
                 InputText = decodedText;
-                BackupText = decodedText; // 共有されたデータをバックアップにも設定
-
-                // URLを綺麗にする（?data=... を消す）
-                // ※Blazor WebAssemblyなら可能ですが、ここではシンプルに読み込みだけ行います
+                BackupText = decodedText;
             }
         }
-        catch
-        {
-            // URLがおかしい場合は無視
-        }
+        catch { }
     }
 
-    // ▼ 共有リンクを生成してコピーする機能 ▼
     private async Task CopyShareLink()
     {
-        // 現在のリストをBase64に変換
         var bytes = Encoding.UTF8.GetBytes(InputText);
         var base64 = Convert.ToBase64String(bytes);
-
-        // URLエンコード（記号対策）
         var encodedData = System.Web.HttpUtility.UrlEncode(base64);
-
-        // 基本のURLを取得
         var baseUrl = NavManager.BaseUri;
-
-        // 共有用URLを作成
         var shareUrl = $"{baseUrl}?data={encodedData}";
 
-        // クリップボードにコピー
         await JSRuntime.InvokeVoidAsync("copyToClipboard", shareUrl);
-
-        // 「コピーしました」メッセージを表示
         showCopyMessage = true;
         StateHasChanged();
         await Task.Delay(2000);
@@ -287,24 +260,15 @@
         StateHasChanged();
     }
 
-    private void CheckOverwrite(ChangeEventArgs e)
-    {
-        NewPresetName = e.Value?.ToString() ?? "";
-    }
+    // ▼ プリセット保存 ▼
+    private void CheckOverwrite(ChangeEventArgs e) { NewPresetName = e.Value?.ToString() ?? ""; }
 
     private async Task SavePreset()
     {
         if (string.IsNullOrWhiteSpace(NewPresetName)) return;
-
         var existing = Presets.FirstOrDefault(p => p.Name == NewPresetName);
-        if (existing != null)
-        {
-            existing.Data = InputText;
-        }
-        else
-        {
-            Presets.Add(new RoulettePreset { Name = NewPresetName, Data = InputText });
-        }
+        if (existing != null) existing.Data = InputText;
+        else Presets.Add(new RoulettePreset { Name = NewPresetName, Data = InputText });
         await SavePresetsToStorage();
     }
 
@@ -357,25 +321,63 @@
         await JSRuntime.InvokeVoidAsync("playAudio", "se-mirumo");
     }
 
-    private void CloseMirumo()
-    {
-        showMirumo = false;
-    }
+    private void CloseMirumo() { showMirumo = false; }
 
+    // ▼ 計算ロジック（確率対応） ▼
     private void Recalculate()
     {
-        var list = InputText.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).ToList();
-        if (list.Count == 0) list.Add("項目を入力");
-        DisplayItems = list;
+        Segments.Clear();
+        var lines = InputText.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
 
-        int count = DisplayItems.Count;
-        double step = 100.0 / count;
-        var gradientParts = new List<string>();
-        for (int i = 0; i < count; i++)
+        if (lines.Length == 0)
         {
-            string color = Colors[i % Colors.Length];
-            gradientParts.Add($"{color} {i * step}% {(i + 1) * step}%");
+            Segments.Add(new RouletteSegment { Name = "項目を入力", Weight = 1, StartAngle = 0, EndAngle = 360 });
         }
+        else
+        {
+            // 入力テキストを解析してセグメントを作成
+            foreach (var line in lines)
+            {
+                var parts = line.Split(':'); // コロンで分割
+                string name = parts[0];
+                int weight = 1;
+
+                // コロンの後ろに数字があれば重みとして採用
+                if (parts.Length > 1 && int.TryParse(parts[1], out int w))
+                {
+                    weight = w > 0 ? w : 1; // 0以下の場合は1にする
+                }
+
+                Segments.Add(new RouletteSegment { Name = name, Weight = weight });
+            }
+        }
+
+        // 全体の重みを計算
+        int totalWeight = Segments.Sum(s => s.Weight);
+
+        // 各セグメントの角度を計算
+        double currentAngle = 0;
+        var gradientParts = new List<string>();
+
+        for (int i = 0; i < Segments.Count; i++)
+        {
+            var seg = Segments[i];
+
+            // 割合に応じた角度幅
+            double angleSize = (double)seg.Weight / totalWeight * 360.0;
+
+            seg.StartAngle = currentAngle;
+            seg.EndAngle = currentAngle + angleSize;
+
+            // グラデーション用のCSS作成
+            string color = Colors[i % Colors.Length];
+            double startPercent = (seg.StartAngle / 360.0) * 100;
+            double endPercent = (seg.EndAngle / 360.0) * 100;
+            gradientParts.Add($"{color} {startPercent}% {endPercent}%");
+
+            currentAngle += angleSize;
+        }
+
         CurrentGradient = $"conic-gradient({string.Join(", ", gradientParts)})";
     }
 
@@ -405,13 +407,18 @@
 
     private void CalculateResult(double finalAngle)
     {
-        int count = DisplayItems.Count;
-        double anglePerItem = 360.0 / count;
+        // 最終的な角度を0-360に正規化
         double normalized = finalAngle % 360;
+
+        // 針は上(0度)にあるが、盤面が回転しているため、
+        // 「針が指している位置」は (360 - 回転角度) になる
         double stopAngle = (360 - normalized) % 360;
-        int index = (int)(stopAngle / anglePerItem);
-        if (index >= count) index = 0;
-        hitItem = DisplayItems[index];
+
+        // どのセグメントの範囲内にあるか判定
+        var hitSegment = Segments.FirstOrDefault(s => stopAngle >= s.StartAngle && stopAngle < s.EndAngle);
+
+        // 万が一見つからない場合（計算誤差など）は最初の要素
+        hitItem = hitSegment != null ? hitSegment.Name : Segments[0].Name;
     }
 
     private async Task CloseModal()
@@ -419,11 +426,24 @@
         showResult = false;
         if (removeWinner)
         {
-            var list = InputText.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).ToList();
-            list.Remove(hitItem);
-            InputText = string.Join("\n", list);
+            // 当選した項目をリストから削除（名前で検索して削除）
+            var lines = InputText.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).ToList();
+
+            // ヒットした項目名を含む行を探して削除
+            // (重複名がある場合は上から順に1つ消す)
+            for (int i = 0; i < lines.Count; i++)
+            {
+                var parts = lines[i].Split(':');
+                if (parts[0] == hitItem)
+                {
+                    lines.RemoveAt(i);
+                    break;
+                }
+            }
+
+            InputText = string.Join("\n", lines);
             Recalculate();
-            await JSRuntime.InvokeVoidAsync("localStorage.setItem", "roulette-current", InputText);
+            await SaveData();
         }
     }
 }
@@ -522,7 +542,6 @@
             background: #d35400;
         }
 
-    /* 共有ボタンのデザイン */
     .share-area {
         margin-bottom: 15px;
         text-align: center;
