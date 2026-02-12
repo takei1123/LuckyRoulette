@@ -18,6 +18,10 @@
         </p>
     </div>
 
+    <div class="debug-log">
+        📜 ログ: @DebugLog
+    </div>
+
     <div class="preset-area">
         <div class="preset-save">
             <input class="preset-input" @bind="NewPresetName" @oninput="CheckOverwrite" placeholder="リスト名" />
@@ -65,11 +69,12 @@
         </div>
         <div style="text-align:center; font-size:0.8rem; color:#bdc3c7; margin-top:5px;">
             🪦 墓場の住人: @Graveyard.Count 人
+            (@(Graveyard.Count > 0 ? Graveyard.Last() + " が待機中" : "空っぽ"))
         </div>
     </div>
 
     <div class="input-area">
-        <textarea value="@InputText" @oninput="UpdateRoulette" placeholder="項目を入力"></textarea>
+        <textarea value="@InputText" @oninput="UpdateRoulette" disabled="@isSpinning" placeholder="項目を入力"></textarea>
     </div>
 
     <div class="roulette-container">
@@ -155,8 +160,10 @@
         public double CenterAngle => StartAngle + (EndAngle - StartAngle) / 2;
     }
 
+    // 初期値
     private string InputText = "アイドル:1\n芸人A:1\n芸人B:1\nクロちゃん:1 {*ランダム道連れ}\nひょうろく:1 {*ランダム復活}";
     private string BackupText = "";
+    private string DebugLog = "待機中...";
     
     private List<RoulettePreset> Presets = new List<RoulettePreset>();
     private string NewPresetName = "";
@@ -219,6 +226,7 @@
         }
     }
     
+    // 基本機能
     private async Task ToggleBgm() { isBgmOn = !isBgmOn; await JSRuntime.InvokeVoidAsync("toggleBgm", isBgmOn); }
     private void CheckUrlForSharedData() { 
         try {
@@ -257,11 +265,12 @@
     private async Task DeletePreset(RoulettePreset preset) { Presets.Remove(preset); if (NewPresetName == preset.Name) NewPresetName = ""; await SavePresetsToStorage(); }
     private async Task SavePresetsToStorage() { var json = JsonSerializer.Serialize(Presets); await JSRuntime.InvokeVoidAsync("localStorage.setItem", "roulette-presets", json); }
     private async Task UpdateRoulette(ChangeEventArgs e) { InputText = e.Value?.ToString() ?? ""; BackupText = InputText; Recalculate(); await SaveData(); }
-    private async Task ResetList() { InputText = BackupText; Graveyard.Clear(); Recalculate(); await SaveData(); }
+    private async Task ResetList() { InputText = BackupText; Graveyard.Clear(); DebugLog = "リセットしました"; Recalculate(); await SaveData(); }
     private async Task SaveData() { await JSRuntime.InvokeVoidAsync("localStorage.setItem", "roulette-current", InputText); await JSRuntime.InvokeVoidAsync("localStorage.setItem", "roulette-backup", BackupText); }
     private async Task OpenMirumo() { showMirumo = true; await JSRuntime.InvokeVoidAsync("playAudio", "se-mirumo"); }
     private void CloseMirumo() { showMirumo = false; }
 
+    // ▼▼ データ計算（堅牢化） ▼▼
     private void Recalculate()
     {
         Segments.Clear();
@@ -275,21 +284,28 @@
         {
             foreach (var line in lines)
             {
-                string name = GetNameFromLine(line);
-                string tempLine = line;
+                // 名前の抽出（ルールを除外）
+                string name = ParseName(line);
+                
+                // ルールの抽出
                 string rule = "";
-                int braceStart = tempLine.IndexOf('{');
-                int braceEnd = tempLine.LastIndexOf('}');
+                int braceStart = line.IndexOf('{');
+                int braceEnd = line.LastIndexOf('}');
                 if (braceStart >= 0 && braceEnd > braceStart)
                 {
-                    rule = tempLine.Substring(braceStart + 1, braceEnd - braceStart - 1);
-                    tempLine = tempLine.Substring(0, braceStart).Trim();
+                    rule = line.Substring(braceStart + 1, braceEnd - braceStart - 1);
                 }
                 
-                // 重み取得
+                // 重みの抽出
                 int weight = 1;
-                var parts = tempLine.Split(':');
-                if (parts.Length > 1 && int.TryParse(parts[1], out int w)) { weight = w > 0 ? w : 1; }
+                // 中括弧より前でコロンを探す
+                string beforeBrace = braceStart >= 0 ? line.Substring(0, braceStart) : line;
+                var parts = beforeBrace.Split(':');
+                if (parts.Length > 1) 
+                {
+                    int.TryParse(parts[1], out weight);
+                    if (weight <= 0) weight = 1;
+                }
                 
                 Segments.Add(new RouletteSegment { Name = name, Weight = weight, Rule = rule });
             }
@@ -320,6 +336,7 @@
         showResult = false;
         showMirumo = false; 
         hitRuleDescription = "";
+        DebugLog = "抽選中...";
         
         await JSRuntime.InvokeVoidAsync("playAudio", "se-drum");
 
@@ -347,6 +364,8 @@
         if (hitSegment != null)
         {
             hitItem = hitSegment.Name;
+            
+            // ルール説明文の作成
             if (!string.IsNullOrEmpty(hitSegment.Rule))
             {
                 if (hitSegment.Rule.Contains("*ランダム道連れ")) 
@@ -363,82 +382,100 @@
         }
     }
 
-    // 修正: 判定を厳密にして動作を確実にしました
+    // ▼▼ 結果処理（ロジックの修正点） ▼▼
     private async Task CloseModal() 
     { 
         showResult = false;
         
         var lines = InputText.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).ToList();
+        
+        // 当選したセグメント情報を取得
         var hitSegment = Segments.FirstOrDefault(s => s.Name == hitItem);
         string rule = hitSegment?.Rule ?? "";
+
+        DebugLog = $"当選: {hitItem} (ルール: {rule})";
 
         // 特殊コマンド: クロちゃん
         if (rule.Contains("*ランダム道連れ"))
         {
             ShuffleList(lines);
-            // 厳密な名前一致でインデックスを探す
-            int myIndex = lines.FindIndex(l => GetNameFromLine(l) == hitItem);
+            // 完全一致で検索
+            int myIndex = lines.FindIndex(l => ParseName(l) == hitItem);
             
             if (myIndex != -1 && lines.Count > 1)
             {
                 // 右隣のターゲット
                 int targetIndex = (myIndex + 1) % lines.Count;
+                string targetName = ParseName(lines[targetIndex]);
+                
                 AddToGraveyard(lines[targetIndex]);
                 lines.RemoveAt(targetIndex);
+                DebugLog += $" -> {targetName} を道連れ";
                 
                 // 再検索して自分も消す
-                myIndex = lines.FindIndex(l => GetNameFromLine(l) == hitItem);
+                myIndex = lines.FindIndex(l => ParseName(l) == hitItem);
                 if (myIndex != -1)
                 {
                     AddToGraveyard(lines[myIndex]);
                     lines.RemoveAt(myIndex);
+                    DebugLog += " -> 自爆";
                 }
             }
-            else
+            else if (myIndex != -1)
             {
                  // 自分しかいない場合
-                 if(myIndex != -1) { AddToGraveyard(lines[myIndex]); lines.RemoveAt(myIndex); }
+                 AddToGraveyard(lines[myIndex]);
+                 lines.RemoveAt(myIndex);
+                 DebugLog += " -> 自爆(道連れなし)";
             }
         }
         // 特殊コマンド: ひょうろく
         else if (rule.Contains("*ランダム復活"))
         {
             ShuffleList(lines);
-            int myIndex = lines.FindIndex(l => GetNameFromLine(l) == hitItem);
+            int myIndex = lines.FindIndex(l => ParseName(l) == hitItem);
             
             if (myIndex != -1)
             {
                 if (Graveyard.Count > 0)
                 {
-                    string revivedItem = Graveyard.Last();
+                    string revivedLine = Graveyard.Last();
+                    string revivedName = ParseName(revivedLine);
                     Graveyard.RemoveAt(Graveyard.Count - 1);
-                    lines[myIndex] = revivedItem;
+                    
+                    // 自分を上書き（復活）
+                    lines[myIndex] = revivedLine;
+                    DebugLog += $" -> {revivedName} が復活";
                 }
                 else
                 {
+                    // 墓場が空なら自分が消えるだけ
                     AddToGraveyard(lines[myIndex]);
                     lines.RemoveAt(myIndex);
+                    DebugLog += " -> 復活失敗(墓場が空)";
                 }
             }
         }
         // 通常処理
         else 
         {
-            // 当選者の削除
+            // まず当選者の削除判定
             if (removeWinner)
             {
-                for (int i = 0; i < lines.Count; i++)
+                // インデックスで逆順に検索（削除時のズレ防止）
+                for (int i = lines.Count - 1; i >= 0; i--)
                 {
-                    if (GetNameFromLine(lines[i]) == hitItem)
+                    if (ParseName(lines[i]) == hitItem)
                     {
                         AddToGraveyard(lines[i]);
                         lines.RemoveAt(i);
-                        break; 
+                        DebugLog += " -> 削除";
+                        break; // 1つ消したら終了
                     }
                 }
             }
 
-            // スクリプト（+, -）
+            // 追加・削除スクリプト（+, -）
             if (!string.IsNullOrEmpty(rule))
             {
                 var rules = rule.Split(',');
@@ -447,13 +484,19 @@
                     string cmd = r.Trim();
                     if (cmd.StartsWith("+")) 
                     {
-                        lines.Add(cmd.Substring(1));
+                        string addItem = cmd.Substring(1).Trim();
+                        lines.Add(addItem);
+                        DebugLog += $" -> 追加({addItem})";
                     }
                     else if (cmd.StartsWith("-")) 
                     {
-                        string delTarget = cmd.Substring(1);
-                        var target = lines.FirstOrDefault(l => GetNameFromLine(l) == delTarget);
-                        if (target != null) { AddToGraveyard(target); lines.Remove(target); }
+                        string delTarget = cmd.Substring(1).Trim();
+                        var targetIndex = lines.FindIndex(l => ParseName(l) == delTarget);
+                        if (targetIndex != -1) {
+                            AddToGraveyard(lines[targetIndex]);
+                            lines.RemoveAt(targetIndex);
+                            DebugLog += $" -> 指定削除({delTarget})";
+                        }
                     }
                 }
             }
@@ -477,23 +520,47 @@
         }
     }
     
-    // 行から名前だけを厳密に取り出す処理（: や { の前まで）
-    private string GetNameFromLine(string line)
+    // 行から「名前」だけを確実に取り出す（空白除去、:や{の除去）
+    private string ParseName(string line)
     {
         string name = line;
-        if (name.Contains("{")) name = name.Substring(0, name.IndexOf('{')).Trim();
-        if (name.Contains(":")) name = name.Split(':')[0].Trim();
-        return name;
+        // 中括弧より前を取得
+        int braceIndex = name.IndexOf('{');
+        if (braceIndex >= 0) name = name.Substring(0, braceIndex);
+        
+        // コロンより前を取得
+        int colonIndex = name.IndexOf(':');
+        if (colonIndex >= 0) name = name.Substring(0, colonIndex);
+        
+        return name.Trim();
     }
     
     private void AddToGraveyard(string line)
     {
+        // 墓場に入れるときは名前だけきれいにして入れる？
+        // いや、設定（重みやルール）ごと保存しておいたほうが復活時に楽しいのでそのまま保存
         Graveyard.Add(line);
     }
 }
 
 <style>
-    /* CSSは前回と同様（閉じるボタン修正済み） */
+    /* ログ表示エリアの追加スタイル */
+    .debug-log {
+        background: rgba(0, 0, 0, 0.5);
+        color: #00ff00;
+        font-family: monospace;
+        padding: 5px 10px;
+        border-radius: 5px;
+        margin-bottom: 10px;
+        font-size: 0.8rem;
+        width: 90%;
+        max-width: 400px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    /* 以下、既存スタイル */
     .casino-table { background-color: #2c3e50; min-height: 100vh; display: flex; flex-direction: column; align-items: center; font-family: 'Helvetica Neue', Arial, sans-serif; color: white; padding: 20px; }
     .title-area { text-align: center; margin-bottom: 10px; }
     .main-subtitle { margin: 5px 0; font-size: 1rem; color: #ecf0f1; font-weight: bold; }
@@ -502,52 +569,4 @@
     .option-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
     .checkbox-label { display: flex; align-items: center; cursor: pointer; background: rgba(255,255,255,0.1); padding: 5px 15px; border-radius: 20px; flex: 1; }
     .checkbox-label input { transform: scale(1.5); margin-right: 10px; cursor: pointer; }
-    .checkbox-text { font-size: 1rem; font-weight: bold; white-space: nowrap; }
-    .btn-bgm { border: none; padding: 5px 15px; border-radius: 20px; font-weight: bold; cursor: pointer; transition: 0.3s; min-width: 120px; }
-    .bgm-on { background: #e74c3c; color: white; box-shadow: 0 0 10px rgba(231, 76, 60, 0.5); }
-    .bgm-off { background: #7f8c8d; color: #ecf0f1; }
-    .preset-area { width: 100%; max-width: 400px; background: rgba(255,255,255,0.1); border-radius: 10px; padding: 15px; margin-bottom: 20px; }
-    .preset-save { display: flex; gap: 10px; margin-bottom: 10px; }
-    .preset-input { flex: 1; padding: 8px; border-radius: 5px; border: none; font-size: 14px; }
-    .btn-save { background: #27ae60; color: white; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; font-weight: bold; transition: 0.3s; }
-    .btn-save:hover { background: #2ecc71; }
-    .btn-update { background: #e67e22; color: white; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; font-weight: bold; transition: 0.3s; }
-    .btn-update:hover { background: #d35400; }
-    .share-area { margin-bottom: 15px; text-align: center; }
-    .btn-share { background: #34495e; border: 1px solid #7f8c8d; color: #ecf0f1; width: 100%; padding: 8px; border-radius: 5px; cursor: pointer; font-size: 0.9rem; transition: 0.3s; }
-    .btn-share:hover { background: #2c3e50; border-color: white; }
-    .copy-msg { color: #2ecc71; font-weight: bold; font-size: 0.9rem; display: block; margin-top: 5px; animation: fadeIn 0.3s; }
-    .preset-list { display: flex; flex-direction: column; gap: 5px; max-height: 150px; overflow-y: auto; }
-    .preset-item { display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.2); padding: 8px; border-radius: 5px; }
-    .preset-name { font-weight: bold; font-size: 0.9rem; }
-    .preset-actions { display: flex; gap: 5px; }
-    .btn-load { background: #3498db; color: white; border: none; padding: 5px 10px; border-radius: 3px; cursor: pointer; font-size: 0.8rem; }
-    .btn-delete { background: #c0392b; color: white; border: none; padding: 5px 10px; border-radius: 3px; cursor: pointer; font-size: 0.8rem; }
-    .input-area { width: 100%; max-width: 300px; margin-bottom: 20px; }
-    textarea { width: 100%; height: 80px; padding: 10px; border-radius: 8px; border: none; font-size: 16px; resize: vertical; }
-    .roulette-container { position: relative; margin-bottom: 30px; }
-    .wheel-border { width: 320px; height: 320px; border-radius: 50%; background: white; padding: 5px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
-    .wheel { width: 100%; height: 100%; border-radius: 50%; position: relative; }
-    .segment-text { position: absolute; width: 100%; height: 100%; top: 0; left: 0; display: flex; justify-content: center; pointer-events: none; }
-    .text { margin-top: 25px; font-weight: bold; color: white; font-size: 16px; text-shadow: 1px 1px 3px rgba(0,0,0,0.8); white-space: nowrap; max-width: 130px; overflow: hidden; text-overflow: ellipsis; text-align: center; }
-    .marker { position: absolute; top: -25px; left: 50%; transform: translateX(-50%); font-size: 40px; color: #e74c3c; z-index: 10; filter: drop-shadow(0 2px 2px rgba(0,0,0,0.5)); }
-    .action-buttons { display: flex; flex-direction: column; gap: 15px; align-items: center; }
-    .btn-spin { background: #e74c3c; color: white; padding: 15px 60px; font-size: 1.5rem; border-radius: 50px; border: none; cursor: pointer; box-shadow: 0 5px 0 #c0392b; }
-    .btn-spin:active { transform: translateY(5px); box-shadow: none; }
-    .btn-spin:disabled { background: #7f8c8d; cursor: not-allowed; box-shadow: none; }
-    .btn-reset { background: transparent; color: #bdc3c7; border: 2px solid #bdc3c7; padding: 10px 20px; border-radius: 30px; font-size: 1rem; cursor: pointer; transition: 0.3s; }
-    .btn-reset:hover { background: rgba(255,255,255,0.1); color: white; border-color: white; }
-    .btn-mirumo { background: #ff69b4; color: white; border: 2px solid white; padding: 8px 20px; border-radius: 30px; font-size: 1rem; cursor: pointer; font-weight: bold; box-shadow: 0 4px 0 #c71585; margin-top: 10px; }
-    .btn-mirumo:active { transform: translateY(4px); box-shadow: none; }
-    .mirumo-style { border: 5px solid #ff69b4; background-color: #fff0f5; }
-    .mirumo-text { font-size: 2.5rem; font-weight: bold; color: #ff1493; margin: 20px 0; animation: bounce 0.5s infinite alternate; }
-    .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); display: flex; justify-content: center; align-items: center; z-index: 100; animation: fadeIn 0.3s; }
-    .modal-content { background: white; padding: 40px; border-radius: 15px; text-align: center; color: #333; min-width: 300px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); animation: popUp 0.4s; }
-    .modal-title { font-size: 1.2rem; color: #7f8c8d; margin-bottom: 5px; }
-    .result-text { font-size: 3rem; font-weight: bold; color: #e74c3c; margin-bottom: 10px; word-break: break-all; }
-    .modal-note { font-size: 0.9rem; color: #e74c3c; margin-bottom: 20px; }
-    .btn-modal-close { padding: 10px 30px; background: #333; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 1rem; }
-    .btn-modal-close:hover { background: #555; }
-    @@keyframes popUp { from { transform: scale(0.5); } to { transform: scale(1); } }
-    @@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-</style>
+    .checkbox-text {
