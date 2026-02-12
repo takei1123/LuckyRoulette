@@ -112,6 +112,14 @@
     <div class="modal-overlay" @onclick="CloseModal">
         <div class="modal-content">
             <p class="modal-title">結果は...</p>
+            
+            @if (!string.IsNullOrEmpty(resultImageSrc))
+            {
+                <div class="result-image-container">
+                    <img src="@resultImageSrc" class="result-image" />
+                </div>
+            }
+
             <div class="result-text">@hitItem</div>
             <p class="modal-note">
                 @if (!string.IsNullOrEmpty(hitRuleDescription))
@@ -184,6 +192,9 @@
     
     private string hitItem = "";
     private string hitRuleDescription = ""; 
+    // 画像URLを保持する変数
+    private string resultImageSrc = "";
+    
     private Random random = new Random();
     private string[] Colors = new[] { "#FF5733", "#33FF57", "#3357FF", "#FF33A8", "#FFC300", "#8E44AD", "#3498DB", "#E67E22" };
 
@@ -340,6 +351,7 @@
         showResult = false;
         showMirumo = false; 
         hitRuleDescription = "";
+        resultImageSrc = ""; // リセット
         DebugLog = "抽選中...";
         
         await JSRuntime.InvokeVoidAsync("playAudio", "se-drum");
@@ -369,12 +381,21 @@
         {
             hitItem = hitSegment.Name;
             
+            // ルール判定と画像の設定
             if (!string.IsNullOrEmpty(hitSegment.Rule))
             {
                 if (hitSegment.Rule.Contains("道連れ")) 
+                {
                     hitRuleDescription = "⚡ 順番をシャッフルして右隣を道連れにする！";
+                    // 画像設定
+                    resultImageSrc = "images/kuro.png";
+                }
                 else if (hitSegment.Rule.Contains("復活")) 
+                {
                     hitRuleDescription = "✨ 順番をシャッフルして消えた誰かを復活させる！";
+                    // 画像設定
+                    resultImageSrc = "images/hyoroku.png";
+                }
                 else if (hitSegment.Rule.Contains("+")) hitRuleDescription = "追加アイテムが出現！";
                 else if (hitSegment.Rule.Contains("-")) hitRuleDescription = "アイテム消滅！";
             }
@@ -382,7 +403,6 @@
         else hitItem = Segments[0].Name;
     }
 
-    // ▼▼ 結果処理ロジック（クロちゃん調整版） ▼▼
     private async Task CloseModal() 
     { 
         showResult = false;
@@ -400,7 +420,7 @@
             
             if (myIndex != -1)
             {
-                // ▼▼ 変更箇所：残り3人以上の時だけ道連れ発生 ▼▼
+                // 残り3人以上の時だけ道連れ
                 if (lines.Count > 2)
                 {
                     int targetIndex = (myIndex + 1) % lines.Count;
@@ -410,7 +430,7 @@
                     lines.RemoveAt(targetIndex);
                     DebugLog += $" -> {targetName}を道連れ";
                     
-                    // 位置がずれた可能性があるので再取得
+                    // 再取得
                     myIndex = lines.FindIndex(l => ParseLine(l).Name == hitItem);
                 }
                 else
@@ -418,7 +438,6 @@
                     DebugLog += " -> 残り2名以下なので道連れ無効";
                 }
 
-                // 自分は必ず消える
                 if (myIndex != -1)
                 {
                     AddToGraveyard(lines[myIndex]);
@@ -436,7 +455,6 @@
             {
                 if (Graveyard.Count > 0)
                 {
-                    // ランダム復活
                     int randomIndex = random.Next(Graveyard.Count);
                     string revivedLine = Graveyard[randomIndex];
                     string revivedName = ParseLine(revivedLine).Name;
@@ -519,6 +537,19 @@
 }
 
 <style>
+    /* 画像表示用のスタイル */
+    .result-image-container {
+        text-align: center;
+        margin-bottom: 20px;
+    }
+    .result-image {
+        max-width: 250px;
+        max-height: 250px;
+        border-radius: 10px;
+        box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        animation: popUp 0.5s;
+    }
+
     /* ログ表示エリア: 折り返しとスクロールに対応 */
     .debug-log { 
         background: rgba(0, 0, 0, 0.5); 
