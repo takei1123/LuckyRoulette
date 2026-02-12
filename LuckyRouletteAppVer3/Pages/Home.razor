@@ -11,7 +11,12 @@
 <div class="casino-table">
     <div class="title-area">
         <h1>🏆 ラッキールーレット</h1>
-        <p>書式: 「項目:重み {+追加,-削除}」<br>例: 宝箱:1 {+金貨} / 爆弾 {-安全地帯}</p>
+        <p class="main-subtitle">回せ運命！ 減らせ選択肢！ 最後に笑うのはアイツだ！</p>
+        
+        <p class="sub-description">
+            クロちゃん：{*ランダム道連れ}<br>
+            ひょうろく：{*ランダム復活}
+        </p>
     </div>
 
     <div class="preset-area">
@@ -59,15 +64,18 @@
                 @(isBgmOn ? "🔊 BGM: ON" : "🔇 BGM: OFF")
             </button>
         </div>
+        <div style="text-align:center; font-size:0.8rem; color:#bdc3c7; margin-top:5px;">
+            🪦 墓場の住人: @Graveyard.Count 人
+        </div>
     </div>
 
     <div class="input-area">
-        <textarea value="@InputText" @oninput="UpdateRoulette" placeholder="宝箱 {+金貨}"></textarea>
+        <textarea value="@InputText" @oninput="UpdateRoulette" placeholder="項目を入力"></textarea>
     </div>
 
     <div class="roulette-container">
         <div class="marker">▼</div>
-
+        
         <div class="wheel-border">
             <div class="wheel" style="transform: rotate(@(rotationAngle)deg); transition: transform @(transitionSeconds)s cubic-bezier(0.25, 0.1, 0.25, 1); background: @(string.IsNullOrEmpty(CurrentGradient) ? "conic-gradient(#ccc 0% 100%)" : CurrentGradient);">
                 @foreach (var seg in Segments)
@@ -82,21 +90,13 @@
 
     <div class="action-buttons">
         <button class="btn-spin" @onclick="SpinWheel" disabled="@(isSpinning || Segments.Count == 0 || (Segments.Count == 1 && Segments[0].Name == "項目を入力"))">
-            @if (isSpinning)
-            {
-                <span>抽選中...</span>
-            }
-            else
-            {
-
-                <span>スタート！</span>
-            }
+            @if (isSpinning) { <span>抽選中...</span> } else { <span>スタート！</span> }
         </button>
 
         <button class="btn-reset" @onclick="ResetList" disabled="@isSpinning">
             🔄 最初の状態に戻す
         </button>
-
+        
         <button class="btn-mirumo" @onclick="OpenMirumo">
             🧚‍♀️ ミルモでポ！
         </button>
@@ -112,9 +112,9 @@
             <p class="modal-note">
                 @if (!string.IsNullOrEmpty(hitRuleDescription))
                 {
-                    <span style="color:#e67e22; font-weight:bold; display:block; margin-bottom:5px;">⚡ 効果発動: @hitRuleDescription</span>
+                    <span style="color:#e67e22; font-weight:bold; display:block; margin-bottom:5px;">@hitRuleDescription</span>
                 }
-                @(removeWinner ? "※この項目は削除されます" : "※閉じて次へ")
+                @(removeWinner ? "※閉じて次へ（処理が実行されます）" : "※閉じて次へ")
             </p>
             <button class="btn-modal-close" @onclick="CloseModal">閉じる</button>
         </div>
@@ -145,29 +145,30 @@
 
 @code {
     public class RoulettePreset { public string Name { get; set; } = ""; public string Data { get; set; } = ""; }
-
+    
     public class RouletteSegment
     {
         public string Name { get; set; } = "";
         public int Weight { get; set; } = 1;
-        public string Rule { get; set; } = ""; // ルール（{...}の中身）を保存
+        public string Rule { get; set; } = "";
         public double StartAngle { get; set; }
         public double EndAngle { get; set; }
         public double CenterAngle => StartAngle + (EndAngle - StartAngle) / 2;
     }
 
-    private string InputText = "勇者:1\n魔王:1 {+ドラゴン,ゴブリン}\n爆弾:1 {-勇者}";
+    private string InputText = "アイドル:1\n芸人A:1\n芸人B:1\nクロちゃん:1 {*ランダム道連れ}\nひょうろく:1 {*ランダム復活}";
     private string BackupText = "";
-
+    
     private List<RoulettePreset> Presets = new List<RoulettePreset>();
     private string NewPresetName = "";
     private bool IsOverwrite => Presets.Any(p => p.Name == NewPresetName);
     private bool showCopyMessage = false;
 
     private List<RouletteSegment> Segments = new List<RouletteSegment>();
-
+    private List<string> Graveyard = new List<string>();
+    
     private string CurrentGradient = "";
-    private bool removeWinner = true;
+    private bool removeWinner = true; 
     private bool isBgmOn = false;
 
     private double rotationAngle = 0;
@@ -175,9 +176,9 @@
     private bool isSpinning = false;
     private bool showResult = false;
     private bool showMirumo = false;
-
+    
     private string hitItem = "";
-    private string hitRuleDescription = ""; // 結果画面に表示する効果の説明
+    private string hitRuleDescription = ""; 
     private Random random = new Random();
     private string[] Colors = new[] { "#FF5733", "#33FF57", "#3357FF", "#FF33A8", "#FFC300", "#8E44AD", "#3498DB", "#E67E22" };
 
@@ -205,7 +206,7 @@
                         InputText = savedCurrent;
                         BackupText = !string.IsNullOrEmpty(savedBackup) ? savedBackup : savedCurrent;
                         Recalculate();
-                        StateHasChanged();
+                        StateHasChanged(); 
                     }
                 }
                 var savedPresets = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "roulette-presets");
@@ -215,15 +216,24 @@
                     StateHasChanged();
                 }
             }
-            catch { }
+            catch {}
         }
     }
-
-    // 省略：BGM, URL共有, プリセット関連は変更なしのためそのまま
+    
     private async Task ToggleBgm() { isBgmOn = !isBgmOn; await JSRuntime.InvokeVoidAsync("toggleBgm", isBgmOn); }
-    private void CheckUrlForSharedData() { /* 既存コードと同じ */ }
-    private async Task CopyShareLink()
-    { /* 既存コードと同じ */
+    private void CheckUrlForSharedData() { 
+        try {
+            var uri = NavManager.ToAbsoluteUri(NavManager.Uri);
+            var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
+            var data = query.Get("data");
+            if (!string.IsNullOrEmpty(data)) {
+                var bytes = Convert.FromBase64String(data);
+                var decodedText = Encoding.UTF8.GetString(bytes);
+                InputText = decodedText; BackupText = decodedText; 
+            }
+        } catch {}
+    }
+    private async Task CopyShareLink() {
         var bytes = Encoding.UTF8.GetBytes(InputText);
         var base64 = Convert.ToBase64String(bytes);
         var encodedData = System.Web.HttpUtility.UrlEncode(base64);
@@ -237,24 +247,22 @@
         StateHasChanged();
     }
     private void CheckOverwrite(ChangeEventArgs e) { NewPresetName = e.Value?.ToString() ?? ""; }
-    private async Task SavePreset()
-    { /* 既存コードと同じ */
+    private async Task SavePreset() {
         if (string.IsNullOrWhiteSpace(NewPresetName)) return;
         var existing = Presets.FirstOrDefault(p => p.Name == NewPresetName);
         if (existing != null) existing.Data = InputText;
         else Presets.Add(new RoulettePreset { Name = NewPresetName, Data = InputText });
         await SavePresetsToStorage();
     }
-    private async Task LoadPreset(RoulettePreset preset) { InputText = preset.Data; BackupText = preset.Data; NewPresetName = preset.Name; Recalculate(); await SaveData(); }
+    private async Task LoadPreset(RoulettePreset preset) { InputText = preset.Data; BackupText = preset.Data; NewPresetName = preset.Name; Graveyard.Clear(); Recalculate(); await SaveData(); }
     private async Task DeletePreset(RoulettePreset preset) { Presets.Remove(preset); if (NewPresetName == preset.Name) NewPresetName = ""; await SavePresetsToStorage(); }
     private async Task SavePresetsToStorage() { var json = JsonSerializer.Serialize(Presets); await JSRuntime.InvokeVoidAsync("localStorage.setItem", "roulette-presets", json); }
     private async Task UpdateRoulette(ChangeEventArgs e) { InputText = e.Value?.ToString() ?? ""; BackupText = InputText; Recalculate(); await SaveData(); }
-    private async Task ResetList() { InputText = BackupText; Recalculate(); await SaveData(); }
+    private async Task ResetList() { InputText = BackupText; Graveyard.Clear(); Recalculate(); await SaveData(); }
     private async Task SaveData() { await JSRuntime.InvokeVoidAsync("localStorage.setItem", "roulette-current", InputText); await JSRuntime.InvokeVoidAsync("localStorage.setItem", "roulette-backup", BackupText); }
     private async Task OpenMirumo() { showMirumo = true; await JSRuntime.InvokeVoidAsync("playAudio", "se-mirumo"); }
     private void CloseMirumo() { showMirumo = false; }
 
-    // ▼▼ 計算ロジック（スクリプト解析機能を追加） ▼▼
     private void Recalculate()
     {
         Segments.Clear();
@@ -268,27 +276,19 @@
         {
             foreach (var line in lines)
             {
-                // 例: "宝箱:1 {+金貨}"
                 string tempLine = line;
                 string rule = "";
-
-                // { } の中身を取り出す
                 int braceStart = tempLine.IndexOf('{');
                 int braceEnd = tempLine.LastIndexOf('}');
                 if (braceStart >= 0 && braceEnd > braceStart)
                 {
-                    rule = tempLine.Substring(braceStart + 1, braceEnd - braceStart - 1); // +金貨
-                    tempLine = tempLine.Substring(0, braceStart).Trim(); // 宝箱:1
+                    rule = tempLine.Substring(braceStart + 1, braceEnd - braceStart - 1);
+                    tempLine = tempLine.Substring(0, braceStart).Trim();
                 }
-
-                // 名前と重みを分離
-                var parts = tempLine.Split(':');
+                var parts = tempLine.Split(':'); 
                 string name = parts[0].Trim();
                 int weight = 1;
-                if (parts.Length > 1 && int.TryParse(parts[1], out int w))
-                {
-                    weight = w > 0 ? w : 1;
-                }
+                if (parts.Length > 1 && int.TryParse(parts[1], out int w)) { weight = w > 0 ? w : 1; }
                 Segments.Add(new RouletteSegment { Name = name, Weight = weight, Rule = rule });
             }
         }
@@ -296,19 +296,16 @@
         int totalWeight = Segments.Sum(s => s.Weight);
         double currentAngle = 0;
         var gradientParts = new List<string>();
-
         for (int i = 0; i < Segments.Count; i++)
         {
             var seg = Segments[i];
             double angleSize = (double)seg.Weight / totalWeight * 360.0;
             seg.StartAngle = currentAngle;
             seg.EndAngle = currentAngle + angleSize;
-
             string color = Colors[i % Colors.Length];
             double startPercent = (seg.StartAngle / 360.0) * 100;
             double endPercent = (seg.EndAngle / 360.0) * 100;
             gradientParts.Add($"{color} {startPercent}% {endPercent}%");
-
             currentAngle += angleSize;
         }
         CurrentGradient = $"conic-gradient({string.Join(", ", gradientParts)})";
@@ -319,18 +316,18 @@
         if (isSpinning) return;
         isSpinning = true;
         showResult = false;
-        showMirumo = false;
-        hitRuleDescription = ""; // リセット
-
+        showMirumo = false; 
+        hitRuleDescription = "";
+        
         await JSRuntime.InvokeVoidAsync("playAudio", "se-drum");
 
-        int extraSpin = random.Next(0, 360);
-        rotationAngle += 1800 + extraSpin;
+        int extraSpin = random.Next(0, 360); 
+        rotationAngle += 1800 + extraSpin; 
         transitionSeconds = 4;
         StateHasChanged();
-
+        
         await Task.Delay(4100);
-
+        
         await JSRuntime.InvokeVoidAsync("stopAudio", "se-drum");
         await JSRuntime.InvokeVoidAsync("playAudio", "se-result");
 
@@ -344,16 +341,18 @@
         double normalized = finalAngle % 360;
         double stopAngle = (360 - normalized) % 360;
         var hitSegment = Segments.FirstOrDefault(s => stopAngle >= s.StartAngle && stopAngle < s.EndAngle);
-
+        
         if (hitSegment != null)
         {
             hitItem = hitSegment.Name;
-
-            // ルールがある場合、説明文を作成
             if (!string.IsNullOrEmpty(hitSegment.Rule))
             {
-                if (hitSegment.Rule.Contains("+")) hitRuleDescription = "追加アイテムが出現！";
-                if (hitSegment.Rule.Contains("-")) hitRuleDescription = (hitRuleDescription == "" ? "" : hitRuleDescription + " ") + "アイテム消滅！";
+                if (hitSegment.Rule.Contains("*ランダム道連れ")) 
+                    hitRuleDescription = "⚡ 順番をシャッフルして右隣を道連れにする！";
+                else if (hitSegment.Rule.Contains("*ランダム復活")) 
+                    hitRuleDescription = "✨ 順番をシャッフルして消えた誰かを復活させる！";
+                else if (hitSegment.Rule.Contains("+")) hitRuleDescription = "追加アイテムが出現！";
+                else if (hitSegment.Rule.Contains("-")) hitRuleDescription = "アイテム消滅！";
             }
         }
         else
@@ -362,56 +361,90 @@
         }
     }
 
-    // ▼▼ 結果を閉じた時にスクリプトを実行 ▼▼
-    private async Task CloseModal()
-    {
+    private async Task CloseModal() 
+    { 
         showResult = false;
-
+        
         var lines = InputText.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).ToList();
+        
+        var hitSegment = Segments.FirstOrDefault(s => s.Name == hitItem);
+        string rule = hitSegment?.Rule ?? "";
 
-        // 1. まずヒットした項目自体の削除処理（removeWinnerがONの場合）
-        if (removeWinner)
+        if (rule.Contains("*ランダム道連れ"))
         {
-            for (int i = 0; i < lines.Count; i++)
+            ShuffleList(lines);
+            int myIndex = lines.FindIndex(l => l.StartsWith(hitItem));
+            
+            if (myIndex != -1 && lines.Count > 1)
             {
-                // 行から名前部分だけ抽出して比較
-                string lineName = lines[i];
-                if (lineName.Contains("{")) lineName = lineName.Substring(0, lineName.IndexOf('{')).Trim();
-                if (lineName.Contains(":")) lineName = lineName.Split(':')[0].Trim();
-
-                if (lineName == hitItem)
+                int targetIndex = (myIndex + 1) % lines.Count;
+                string targetLine = lines[targetIndex];
+                AddToGraveyard(targetLine);
+                lines.RemoveAt(targetIndex);
+                
+                myIndex = lines.FindIndex(l => l.StartsWith(hitItem));
+                if (myIndex != -1)
                 {
-                    lines.RemoveAt(i);
-                    break;
+                    AddToGraveyard(lines[myIndex]);
+                    lines.RemoveAt(myIndex);
+                }
+            }
+            else
+            {
+                 if(myIndex != -1) { AddToGraveyard(lines[myIndex]); lines.RemoveAt(myIndex); }
+            }
+        }
+        else if (rule.Contains("*ランダム復活"))
+        {
+            ShuffleList(lines);
+            int myIndex = lines.FindIndex(l => l.StartsWith(hitItem));
+            if (myIndex != -1)
+            {
+                if (Graveyard.Count > 0)
+                {
+                    string revivedItem = Graveyard.Last();
+                    Graveyard.RemoveAt(Graveyard.Count - 1);
+                    lines[myIndex] = revivedItem;
+                }
+                else
+                {
+                    AddToGraveyard(lines[myIndex]);
+                    lines.RemoveAt(myIndex);
                 }
             }
         }
-
-        // 2. スクリプト（ルールの実行）
-        var hitSegment = Segments.FirstOrDefault(s => s.Name == hitItem);
-        if (hitSegment != null && !string.IsNullOrEmpty(hitSegment.Rule))
+        else 
         {
-            // カンマ区切りで複数の命令に対応
-            var rules = hitSegment.Rule.Split(',');
-            foreach (var rule in rules)
+            if (removeWinner)
             {
-                string r = rule.Trim();
-                if (r.StartsWith("+")) // 追加命令
+                for (int i = 0; i < lines.Count; i++)
                 {
-                    string addItem = r.Substring(1); // "+"以降の文字
-                    lines.Add(addItem);
-                }
-                else if (r.StartsWith("-")) // 削除命令
-                {
-                    string delTarget = r.Substring(1); // "-"以降の文字
-                    // 名前が一致する行を全て消す
-                    lines.RemoveAll(l =>
+                    string lineName = GetNameFromLine(lines[i]);
+                    if (lineName == hitItem)
                     {
-                        string name = l;
-                        if (name.Contains("{")) name = name.Substring(0, name.IndexOf('{')).Trim();
-                        if (name.Contains(":")) name = name.Split(':')[0].Trim();
-                        return name == delTarget;
-                    });
+                        AddToGraveyard(lines[i]);
+                        lines.RemoveAt(i);
+                        break; 
+                    }
+                }
+            }
+
+            if (!string.IsNullOrEmpty(rule))
+            {
+                var rules = rule.Split(',');
+                foreach (var r in rules)
+                {
+                    string cmd = r.Trim();
+                    if (cmd.StartsWith("+")) 
+                    {
+                        lines.Add(cmd.Substring(1));
+                    }
+                    else if (cmd.StartsWith("-")) 
+                    {
+                        string delTarget = cmd.Substring(1);
+                        var target = lines.FirstOrDefault(l => GetNameFromLine(l) == delTarget);
+                        if (target != null) { AddToGraveyard(target); lines.Remove(target); }
+                    }
                 }
             }
         }
@@ -420,448 +453,93 @@
         Recalculate();
         await SaveData();
     }
+    
+    private void ShuffleList(List<string> list)
+    {
+        int n = list.Count;
+        while (n > 1)
+        {
+            n--;
+            int k = random.Next(n + 1);
+            string value = list[k];
+            list[k] = list[n];
+            list[n] = value;
+        }
+    }
+    
+    private string GetNameFromLine(string line)
+    {
+        string name = line;
+        if (name.Contains("{")) name = name.Substring(0, name.IndexOf('{')).Trim();
+        if (name.Contains(":")) name = name.Split(':')[0].Trim();
+        return name;
+    }
+    
+    private void AddToGraveyard(string line)
+    {
+        Graveyard.Add(line);
+    }
 }
 
 <style>
-    /* デザインは前回とほぼ同じですが、オプションエリアのレイアウトのみ微調整 */
-    .casino-table {
-        background-color: #2c3e50;
-        min-height: 100vh;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        font-family: 'Helvetica Neue', Arial, sans-serif;
-        color: white;
-        padding: 20px;
-    }
+    /* デザイン */
+    .casino-table { background-color: #2c3e50; min-height: 100vh; display: flex; flex-direction: column; align-items: center; font-family: 'Helvetica Neue', Arial, sans-serif; color: white; padding: 20px; }
+    
+    /* ▼▼ タイトルエリア修正 ▼▼ */
+    .title-area { text-align: center; margin-bottom: 10px; }
+    .main-subtitle { margin: 5px 0; font-size: 1rem; color: #ecf0f1; font-weight: bold; }
+    .sub-description { font-size: 0.8rem; color: #bdc3c7; opacity: 0.8; margin-top: 5px; }
 
-    .title-area {
-        text-align: center;
-        margin-bottom: 10px;
-    }
-
-    .options-area {
-        margin-bottom: 15px;
-        width: 100%;
-        max-width: 400px;
-    }
-
-    .option-row {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 10px;
-    }
-
-    .checkbox-label {
-        display: flex;
-        align-items: center;
-        cursor: pointer;
-        background: rgba(255,255,255,0.1);
-        padding: 5px 15px;
-        border-radius: 20px;
-        flex: 1;
-    }
-
-        .checkbox-label input {
-            transform: scale(1.5);
-            margin-right: 10px;
-            cursor: pointer;
-        }
-
-    .checkbox-text {
-        font-size: 1rem;
-        font-weight: bold;
-        white-space: nowrap;
-    }
-
-    .btn-bgm {
-        border: none;
-        padding: 5px 15px;
-        border-radius: 20px;
-        font-weight: bold;
-        cursor: pointer;
-        transition: 0.3s;
-        min-width: 120px;
-    }
-
-    .bgm-on {
-        background: #e74c3c;
-        color: white;
-        box-shadow: 0 0 10px rgba(231, 76, 60, 0.5);
-    }
-
-    .bgm-off {
-        background: #7f8c8d;
-        color: #ecf0f1;
-    }
-
-    .preset-area {
-        width: 100%;
-        max-width: 400px;
-        background: rgba(255,255,255,0.1);
-        border-radius: 10px;
-        padding: 15px;
-        margin-bottom: 20px;
-    }
-
-    .preset-save {
-        display: flex;
-        gap: 10px;
-        margin-bottom: 10px;
-    }
-
-    .preset-input {
-        flex: 1;
-        padding: 8px;
-        border-radius: 5px;
-        border: none;
-        font-size: 14px;
-    }
-
-    .btn-save {
-        background: #27ae60;
-        color: white;
-        border: none;
-        padding: 8px 15px;
-        border-radius: 5px;
-        cursor: pointer;
-        font-weight: bold;
-        transition: 0.3s;
-    }
-
-        .btn-save:hover {
-            background: #2ecc71;
-        }
-
-    .btn-update {
-        background: #e67e22;
-        color: white;
-        border: none;
-        padding: 8px 15px;
-        border-radius: 5px;
-        cursor: pointer;
-        font-weight: bold;
-        transition: 0.3s;
-    }
-
-        .btn-update:hover {
-            background: #d35400;
-        }
-
-    .share-area {
-        margin-bottom: 15px;
-        text-align: center;
-    }
-
-    .btn-share {
-        background: #34495e;
-        border: 1px solid #7f8c8d;
-        color: #ecf0f1;
-        width: 100%;
-        padding: 8px;
-        border-radius: 5px;
-        cursor: pointer;
-        font-size: 0.9rem;
-        transition: 0.3s;
-    }
-
-        .btn-share:hover {
-            background: #2c3e50;
-            border-color: white;
-        }
-
-    .copy-msg {
-        color: #2ecc71;
-        font-weight: bold;
-        font-size: 0.9rem;
-        display: block;
-        margin-top: 5px;
-        animation: fadeIn 0.3s;
-    }
-
-    .preset-list {
-        display: flex;
-        flex-direction: column;
-        gap: 5px;
-        max-height: 150px;
-        overflow-y: auto;
-    }
-
-    .preset-item {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        background: rgba(0,0,0,0.2);
-        padding: 8px;
-        border-radius: 5px;
-    }
-
-    .preset-name {
-        font-weight: bold;
-        font-size: 0.9rem;
-    }
-
-    .preset-actions {
-        display: flex;
-        gap: 5px;
-    }
-
-    .btn-load {
-        background: #3498db;
-        color: white;
-        border: none;
-        padding: 5px 10px;
-        border-radius: 3px;
-        cursor: pointer;
-        font-size: 0.8rem;
-    }
-
-    .btn-delete {
-        background: #c0392b;
-        color: white;
-        border: none;
-        padding: 5px 10px;
-        border-radius: 3px;
-        cursor: pointer;
-        font-size: 0.8rem;
-    }
-
-    .input-area {
-        width: 100%;
-        max-width: 300px;
-        margin-bottom: 20px;
-    }
-
-    textarea {
-        width: 100%;
-        height: 80px;
-        padding: 10px;
-        border-radius: 8px;
-        border: none;
-        font-size: 16px;
-        resize: vertical;
-    }
-
-    .roulette-container {
-        position: relative;
-        margin-bottom: 30px;
-    }
-
-    .wheel-border {
-        width: 320px;
-        height: 320px;
-        border-radius: 50%;
-        background: white;
-        padding: 5px;
-        box-shadow: 0 10px 25px rgba(0,0,0,0.5);
-    }
-
-    .wheel {
-        width: 100%;
-        height: 100%;
-        border-radius: 50%;
-        position: relative;
-    }
-
-    .segment-text {
-        position: absolute;
-        width: 100%;
-        height: 100%;
-        top: 0;
-        left: 0;
-        display: flex;
-        justify-content: center;
-        pointer-events: none;
-    }
-
-    .text {
-        margin-top: 25px;
-        font-weight: bold;
-        color: white;
-        font-size: 16px;
-        text-shadow: 1px 1px 3px rgba(0,0,0,0.8);
-        white-space: nowrap;
-        max-width: 130px;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        text-align: center;
-    }
-
-    .marker {
-        position: absolute;
-        top: -25px;
-        left: 50%;
-        transform: translateX(-50%);
-        font-size: 40px;
-        color: #e74c3c;
-        z-index: 10;
-        filter: drop-shadow(0 2px 2px rgba(0,0,0,0.5));
-    }
-
-    .action-buttons {
-        display: flex;
-        flex-direction: column;
-        gap: 15px;
-        align-items: center;
-    }
-
-    .btn-spin {
-        background: #e74c3c;
-        color: white;
-        padding: 15px 60px;
-        font-size: 1.5rem;
-        border-radius: 50px;
-        border: none;
-        cursor: pointer;
-        box-shadow: 0 5px 0 #c0392b;
-    }
-
-        .btn-spin:active {
-            transform: translateY(5px);
-            box-shadow: none;
-        }
-
-        .btn-spin:disabled {
-            background: #7f8c8d;
-            cursor: not-allowed;
-            box-shadow: none;
-        }
-
-    .btn-reset {
-        background: transparent;
-        color: #bdc3c7;
-        border: 2px solid #bdc3c7;
-        padding: 10px 20px;
-        border-radius: 30px;
-        font-size: 1rem;
-        cursor: pointer;
-        transition: 0.3s;
-    }
-
-        .btn-reset:hover {
-            background: rgba(255,255,255,0.1);
-            color: white;
-            border-color: white;
-        }
-
-    .btn-mirumo {
-        background: #ff69b4;
-        color: white;
-        border: 2px solid white;
-        padding: 8px 20px;
-        border-radius: 30px;
-        font-size: 1rem;
-        cursor: pointer;
-        font-weight: bold;
-        box-shadow: 0 4px 0 #c71585;
-        margin-top: 10px;
-    }
-
-        .btn-mirumo:active {
-            transform: translateY(4px);
-            box-shadow: none;
-        }
-
-    .mirumo-style {
-        border: 5px solid #ff69b4;
-        background-color: #fff0f5;
-    }
-
-    .mirumo-text {
-        font-size: 2.5rem;
-        font-weight: bold;
-        color: #ff1493;
-        margin: 20px 0;
-        animation: bounce 0.5s infinite alternate;
-    }
-
-    .modal-overlay {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(0,0,0,0.7);
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        z-index: 100;
-        animation: fadeIn 0.3s;
-    }
-
-    .modal-content {
-        background: white;
-        padding: 40px;
-        border-radius: 15px;
-        text-align: center;
-        color: #333;
-        min-width: 300px;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-        animation: popUp 0.4s;
-    }
-
-    .modal-title {
-        font-size: 1.2rem;
-        color: #7f8c8d;
-        margin-bottom: 5px;
-    }
-
-    .result-text {
-        font-size: 3rem;
-        font-weight: bold;
-        color: #e74c3c;
-        margin-bottom: 10px;
-        word-break: break-all;
-    }
-
-    .modal-note {
-        font-size: 0.9rem;
-        color: #e74c3c;
-        margin-bottom: 20px;
-    }
-
-    .btn-modal-close {
-        padding: 10px 30px;
-        background: #333;
-        color: white;
-        border: none;
-        border-radius: 5px;
-        cursor: pointer;
-        font-size: 1rem;
-    }
-
-        .btn-modal-close:hover {
-            background: #555;
-        }
-
-    @@keyframes popUp {
-        from {
-            transform: scale(0.5);
-        }
-
-        to {
-            transform: scale(1);
-        }
-    }
-
-    @@keyframes fadeIn {
-        from {
-            opacity: 0;
-        }
-
-        to {
-            opacity: 1;
-        }
-    }
-
-    @@keyframes bounce {
-        from {
-            transform: translateY(0);
-        }
-
-        to {
-            transform: translateY(-10px);
-        }
-    }
+    .options-area { margin-bottom: 15px; width: 100%; max-width: 400px; }
+    .option-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+    .checkbox-label { display: flex; align-items: center; cursor: pointer; background: rgba(255,255,255,0.1); padding: 5px 15px; border-radius: 20px; flex: 1; }
+    .checkbox-label input { transform: scale(1.5); margin-right: 10px; cursor: pointer; }
+    .checkbox-text { font-size: 1rem; font-weight: bold; white-space: nowrap; }
+    .btn-bgm { border: none; padding: 5px 15px; border-radius: 20px; font-weight: bold; cursor: pointer; transition: 0.3s; min-width: 120px; }
+    .bgm-on { background: #e74c3c; color: white; box-shadow: 0 0 10px rgba(231, 76, 60, 0.5); }
+    .bgm-off { background: #7f8c8d; color: #ecf0f1; }
+    .preset-area { width: 100%; max-width: 400px; background: rgba(255,255,255,0.1); border-radius: 10px; padding: 15px; margin-bottom: 20px; }
+    .preset-save { display: flex; gap: 10px; margin-bottom: 10px; }
+    .preset-input { flex: 1; padding: 8px; border-radius: 5px; border: none; font-size: 14px; }
+    .btn-save { background: #27ae60; color: white; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; font-weight: bold; transition: 0.3s; }
+    .btn-save:hover { background: #2ecc71; }
+    .btn-update { background: #e67e22; color: white; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; font-weight: bold; transition: 0.3s; }
+    .btn-update:hover { background: #d35400; }
+    .share-area { margin-bottom: 15px; text-align: center; }
+    .btn-share { background: #34495e; border: 1px solid #7f8c8d; color: #ecf0f1; width: 100%; padding: 8px; border-radius: 5px; cursor: pointer; font-size: 0.9rem; transition: 0.3s; }
+    .btn-share:hover { background: #2c3e50; border-color: white; }
+    .copy-msg { color: #2ecc71; font-weight: bold; font-size: 0.9rem; display: block; margin-top: 5px; animation: fadeIn 0.3s; }
+    .preset-list { display: flex; flex-direction: column; gap: 5px; max-height: 150px; overflow-y: auto; }
+    .preset-item { display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.2); padding: 8px; border-radius: 5px; }
+    .preset-name { font-weight: bold; font-size: 0.9rem; }
+    .preset-actions { display: flex; gap: 5px; }
+    .btn-load { background: #3498db; color: white; border: none; padding: 5px 10px; border-radius: 3px; cursor: pointer; font-size: 0.8rem; }
+    .btn-delete { background: #c0392b; color: white; border: none; padding: 5px 10px; border-radius: 3px; cursor: pointer; font-size: 0.8rem; }
+    .input-area { width: 100%; max-width: 300px; margin-bottom: 20px; }
+    textarea { width: 100%; height: 80px; padding: 10px; border-radius: 8px; border: none; font-size: 16px; resize: vertical; }
+    .roulette-container { position: relative; margin-bottom: 30px; }
+    .wheel-border { width: 320px; height: 320px; border-radius: 50%; background: white; padding: 5px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
+    .wheel { width: 100%; height: 100%; border-radius: 50%; position: relative; }
+    .segment-text { position: absolute; width: 100%; height: 100%; top: 0; left: 0; display: flex; justify-content: center; pointer-events: none; }
+    .text { margin-top: 25px; font-weight: bold; color: white; font-size: 16px; text-shadow: 1px 1px 3px rgba(0,0,0,0.8); white-space: nowrap; max-width: 130px; overflow: hidden; text-overflow: ellipsis; text-align: center; }
+    .marker { position: absolute; top: -25px; left: 50%; transform: translateX(-50%); font-size: 40px; color: #e74c3c; z-index: 10; filter: drop-shadow(0 2px 2px rgba(0,0,0,0.5)); }
+    .action-buttons { display: flex; flex-direction: column; gap: 15px; align-items: center; }
+    .btn-spin { background: #e74c3c; color: white; padding: 15px 60px; font-size: 1.5rem; border-radius: 50px; border: none; cursor: pointer; box-shadow: 0 5px 0 #c0392b; }
+    .btn-spin:active { transform: translateY(5px); box-shadow: none; }
+    .btn-spin:disabled { background: #7f8c8d; cursor: not-allowed; box-shadow: none; }
+    .btn-reset { background: transparent; color: #bdc3c7; border: 2px solid #bdc3c7; padding: 10px 20px; border-radius: 30px; font-size: 1rem; cursor: pointer; transition: 0.3s; }
+    .btn-reset:hover { background: rgba(255,255,255,0.1); color: white; border-color: white; }
+    .btn-mirumo { background: #ff69b4; color: white; border: 2px solid white; padding: 8px 20px; border-radius: 30px; font-size: 1rem; cursor: pointer; font-weight: bold; box-shadow: 0 4px 0 #c71585; margin-top: 10px; }
+    .btn-mirumo:active { transform: translateY(4px); box-shadow: none; }
+    .mirumo-style { border: 5px solid #ff69b4; background-color: #fff0f5; }
+    .mirumo-text { font-size: 2.5rem; font-weight: bold; color: #ff1493; margin: 20px 0; animation: bounce 0.5s infinite alternate; }
+    .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); display: flex; justify-content: center; align-items: center; z-index: 100; animation: fadeIn 0.3s; }
+    .modal-content { background: white; padding: 40px; border-radius: 15px; text-align: center; color: #333; min-width: 300px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); animation: popUp 0.4s; }
+    .modal-title { font-size: 1.2rem; color: #7f8c8d; margin-bottom: 5px; }
+    .result-text { font-size: 3rem; font-weight: bold; color: #e74c3c; margin-bottom: 10px; word-break: break-all; }
+    .modal-note { font-size: 0.9rem; color: #e74c3c; margin-bottom: 20px; }
+    .btn-modal-close { padding: 10px 30px; background: #333; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 1rem; }
+    .btn-modal-close:hover { background: #555; }
+    @@keyframes popUp { from { transform: scale(0.5); } to { transform: scale(1); } }
+    @@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 </style>
