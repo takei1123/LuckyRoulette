@@ -285,14 +285,8 @@
                 // 自動ルール付与
                 if (string.IsNullOrEmpty(parsed.Rule))
                 {
-                    if (parsed.Name.Contains("クロちゃん"))
-                    {
-                        parsed.Rule = "*道連れ";
-                    }
-                    else if (parsed.Name.Contains("ひょうろく"))
-                    {
-                        parsed.Rule = "*復活";
-                    }
+                    if (parsed.Name.Contains("クロちゃん")) parsed.Rule = "*道連れ";
+                    else if (parsed.Name.Contains("ひょうろく")) parsed.Rule = "*復活";
                 }
 
                 Segments.Add(new RouletteSegment { Name = parsed.Name, Weight = parsed.Weight, Rule = parsed.Rule });
@@ -388,6 +382,7 @@
         else hitItem = Segments[0].Name;
     }
 
+    // ▼▼ 結果処理ロジック（クロちゃん調整版） ▼▼
     private async Task CloseModal() 
     { 
         showResult = false;
@@ -403,28 +398,33 @@
             ShuffleList(lines);
             int myIndex = lines.FindIndex(l => ParseLine(l).Name == hitItem);
             
-            if (myIndex != -1 && lines.Count > 1)
+            if (myIndex != -1)
             {
-                int targetIndex = (myIndex + 1) % lines.Count;
-                string targetName = ParseLine(lines[targetIndex]).Name;
-                
-                AddToGraveyard(lines[targetIndex]);
-                lines.RemoveAt(targetIndex);
-                DebugLog += $" -> {targetName}を道連れ";
-                
-                myIndex = lines.FindIndex(l => ParseLine(l).Name == hitItem);
+                // ▼▼ 変更箇所：残り3人以上の時だけ道連れ発生 ▼▼
+                if (lines.Count > 2)
+                {
+                    int targetIndex = (myIndex + 1) % lines.Count;
+                    string targetName = ParseLine(lines[targetIndex]).Name;
+                    
+                    AddToGraveyard(lines[targetIndex]);
+                    lines.RemoveAt(targetIndex);
+                    DebugLog += $" -> {targetName}を道連れ";
+                    
+                    // 位置がずれた可能性があるので再取得
+                    myIndex = lines.FindIndex(l => ParseLine(l).Name == hitItem);
+                }
+                else
+                {
+                    DebugLog += " -> 残り2名以下なので道連れ無効";
+                }
+
+                // 自分は必ず消える
                 if (myIndex != -1)
                 {
                     AddToGraveyard(lines[myIndex]);
                     lines.RemoveAt(myIndex);
                     DebugLog += " -> 自爆";
                 }
-            }
-            else if (myIndex != -1)
-            {
-                 AddToGraveyard(lines[myIndex]);
-                 lines.RemoveAt(myIndex);
-                 DebugLog += " -> 自爆(道連れなし)";
             }
         }
         else if (rule.Contains("復活")) 
@@ -436,7 +436,7 @@
             {
                 if (Graveyard.Count > 0)
                 {
-                    // 修正: 墓場からランダムに1人選ぶ
+                    // ランダム復活
                     int randomIndex = random.Next(Graveyard.Count);
                     string revivedLine = Graveyard[randomIndex];
                     string revivedName = ParseLine(revivedLine).Name;
@@ -515,21 +515,11 @@
         DebugLog += " -> シャッフル";
     }
     
-    private string ParseName(string line)
-    {
-        string name = line;
-        int braceIndex = name.IndexOf('{');
-        if (braceIndex >= 0) name = name.Substring(0, braceIndex);
-        int colonIndex = name.IndexOf(':');
-        if (colonIndex >= 0) name = name.Substring(0, colonIndex);
-        return name.Trim();
-    }
-    
     private void AddToGraveyard(string line) { Graveyard.Add(line); }
 }
 
 <style>
-    /* 修正: ログ表示エリア */
+    /* ログ表示エリア: 折り返しとスクロールに対応 */
     .debug-log { 
         background: rgba(0, 0, 0, 0.5); 
         color: #00ff00; 
@@ -540,14 +530,12 @@
         font-size: 0.8rem; 
         width: 90%; 
         max-width: 400px; 
-        /* ここを修正：全文表示＆折り返し */
         white-space: pre-wrap; 
         word-break: break-all;
         max-height: 100px;
         overflow-y: auto;
     }
 
-    /* 以下、既存スタイル */
     .casino-table { background-color: #2c3e50; min-height: 100vh; display: flex; flex-direction: column; align-items: center; font-family: 'Helvetica Neue', Arial, sans-serif; color: white; padding: 20px; }
     .title-area { text-align: center; margin-bottom: 10px; }
     .main-subtitle { margin: 5px 0; font-size: 1rem; color: #ecf0f1; font-weight: bold; }
