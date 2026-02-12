@@ -12,7 +12,6 @@
     <div class="title-area">
         <h1>🏆 ラッキールーレット</h1>
         <p class="main-subtitle">回せ運命！ 減らせ選択肢！ 最後に笑うのはアイツだ！</p>
-        
         <p class="sub-description">
             クロちゃん：{*ランダム道連れ}<br>
             ひょうろく：{*ランダム復活}
@@ -276,6 +275,7 @@
         {
             foreach (var line in lines)
             {
+                string name = GetNameFromLine(line);
                 string tempLine = line;
                 string rule = "";
                 int braceStart = tempLine.IndexOf('{');
@@ -285,10 +285,12 @@
                     rule = tempLine.Substring(braceStart + 1, braceEnd - braceStart - 1);
                     tempLine = tempLine.Substring(0, braceStart).Trim();
                 }
-                var parts = tempLine.Split(':'); 
-                string name = parts[0].Trim();
+                
+                // 重み取得
                 int weight = 1;
+                var parts = tempLine.Split(':');
                 if (parts.Length > 1 && int.TryParse(parts[1], out int w)) { weight = w > 0 ? w : 1; }
+                
                 Segments.Add(new RouletteSegment { Name = name, Weight = weight, Rule = rule });
             }
         }
@@ -361,28 +363,31 @@
         }
     }
 
+    // 修正: 判定を厳密にして動作を確実にしました
     private async Task CloseModal() 
     { 
         showResult = false;
         
         var lines = InputText.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).ToList();
-        
         var hitSegment = Segments.FirstOrDefault(s => s.Name == hitItem);
         string rule = hitSegment?.Rule ?? "";
 
+        // 特殊コマンド: クロちゃん
         if (rule.Contains("*ランダム道連れ"))
         {
             ShuffleList(lines);
-            int myIndex = lines.FindIndex(l => l.StartsWith(hitItem));
+            // 厳密な名前一致でインデックスを探す
+            int myIndex = lines.FindIndex(l => GetNameFromLine(l) == hitItem);
             
             if (myIndex != -1 && lines.Count > 1)
             {
+                // 右隣のターゲット
                 int targetIndex = (myIndex + 1) % lines.Count;
-                string targetLine = lines[targetIndex];
-                AddToGraveyard(targetLine);
+                AddToGraveyard(lines[targetIndex]);
                 lines.RemoveAt(targetIndex);
                 
-                myIndex = lines.FindIndex(l => l.StartsWith(hitItem));
+                // 再検索して自分も消す
+                myIndex = lines.FindIndex(l => GetNameFromLine(l) == hitItem);
                 if (myIndex != -1)
                 {
                     AddToGraveyard(lines[myIndex]);
@@ -391,13 +396,16 @@
             }
             else
             {
+                 // 自分しかいない場合
                  if(myIndex != -1) { AddToGraveyard(lines[myIndex]); lines.RemoveAt(myIndex); }
             }
         }
+        // 特殊コマンド: ひょうろく
         else if (rule.Contains("*ランダム復活"))
         {
             ShuffleList(lines);
-            int myIndex = lines.FindIndex(l => l.StartsWith(hitItem));
+            int myIndex = lines.FindIndex(l => GetNameFromLine(l) == hitItem);
+            
             if (myIndex != -1)
             {
                 if (Graveyard.Count > 0)
@@ -413,14 +421,15 @@
                 }
             }
         }
+        // 通常処理
         else 
         {
+            // 当選者の削除
             if (removeWinner)
             {
                 for (int i = 0; i < lines.Count; i++)
                 {
-                    string lineName = GetNameFromLine(lines[i]);
-                    if (lineName == hitItem)
+                    if (GetNameFromLine(lines[i]) == hitItem)
                     {
                         AddToGraveyard(lines[i]);
                         lines.RemoveAt(i);
@@ -429,6 +438,7 @@
                 }
             }
 
+            // スクリプト（+, -）
             if (!string.IsNullOrEmpty(rule))
             {
                 var rules = rule.Split(',');
@@ -467,6 +477,7 @@
         }
     }
     
+    // 行から名前だけを厳密に取り出す処理（: や { の前まで）
     private string GetNameFromLine(string line)
     {
         string name = line;
@@ -482,14 +493,11 @@
 }
 
 <style>
-    /* デザイン */
+    /* CSSは前回と同様（閉じるボタン修正済み） */
     .casino-table { background-color: #2c3e50; min-height: 100vh; display: flex; flex-direction: column; align-items: center; font-family: 'Helvetica Neue', Arial, sans-serif; color: white; padding: 20px; }
-    
-    /* ▼▼ タイトルエリア修正 ▼▼ */
     .title-area { text-align: center; margin-bottom: 10px; }
     .main-subtitle { margin: 5px 0; font-size: 1rem; color: #ecf0f1; font-weight: bold; }
     .sub-description { font-size: 0.8rem; color: #bdc3c7; opacity: 0.8; margin-top: 5px; }
-
     .options-area { margin-bottom: 15px; width: 100%; max-width: 400px; }
     .option-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
     .checkbox-label { display: flex; align-items: center; cursor: pointer; background: rgba(255,255,255,0.1); padding: 5px 15px; border-radius: 20px; flex: 1; }
