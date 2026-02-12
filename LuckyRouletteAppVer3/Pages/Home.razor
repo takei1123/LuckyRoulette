@@ -13,8 +13,8 @@
         <h1>🏆 ラッキールーレット</h1>
         <p class="main-subtitle">回せ運命！ 減らせ選択肢！ 最後に笑うのはアイツだ！</p>
         <p class="sub-description">
-            クロちゃん：{*ランダム道連れ}<br>
-            ひょうろく：{*ランダム復活}
+            クロちゃん：{*道連れ}<br>
+            ひょうろく：{*復活}
         </p>
     </div>
 
@@ -160,7 +160,8 @@
         public double CenterAngle => StartAngle + (EndAngle - StartAngle) / 2;
     }
 
-    private string InputText = "アイドル:1\n芸人A:1\n芸人B:1\nクロちゃん:1 {*ランダム道連れ}\nひょうろく:1 {*ランダム復活}";
+    // 初期値を少しシンプルに記述（スペースなどがあっても動くように改良済み）
+    private string InputText = "アイドル\n芸人A\n芸人B\nクロちゃん {*道連れ}\nひょうろく {*復活}";
     private string BackupText = "";
     private string DebugLog = "待機中...";
     
@@ -224,6 +225,7 @@
         }
     }
     
+    // 基本機能
     private async Task ToggleBgm() { isBgmOn = !isBgmOn; await JSRuntime.InvokeVoidAsync("toggleBgm", isBgmOn); }
     private void CheckUrlForSharedData() { 
         try {
@@ -267,6 +269,7 @@
     private async Task OpenMirumo() { showMirumo = true; await JSRuntime.InvokeVoidAsync("playAudio", "se-mirumo"); }
     private void CloseMirumo() { showMirumo = false; }
 
+    // ▼▼ データ解析（全角半角対応・スペース対応） ▼▼
     private void Recalculate()
     {
         Segments.Clear();
@@ -280,21 +283,12 @@
         {
             foreach (var line in lines)
             {
-                string name = ParseName(line);
-                string rule = "";
-                int braceStart = line.IndexOf('{');
-                int braceEnd = line.LastIndexOf('}');
-                if (braceStart >= 0 && braceEnd > braceStart)
-                {
-                    rule = line.Substring(braceStart + 1, braceEnd - braceStart - 1);
-                }
-                int weight = 1;
-                string beforeBrace = braceStart >= 0 ? line.Substring(0, braceStart) : line;
-                var parts = beforeBrace.Split(':');
-                if (parts.Length > 1) { int.TryParse(parts[1], out weight); if (weight <= 0) weight = 1; }
-                Segments.Add(new RouletteSegment { Name = name, Weight = weight, Rule = rule });
+                var parsed = ParseLine(line);
+                Segments.Add(new RouletteSegment { Name = parsed.Name, Weight = parsed.Weight, Rule = parsed.Rule });
             }
         }
+        
+        // 角度計算
         int totalWeight = Segments.Sum(s => s.Weight);
         double currentAngle = 0;
         var gradientParts = new List<string>();
@@ -311,6 +305,37 @@
             currentAngle += angleSize;
         }
         CurrentGradient = $"conic-gradient({string.Join(", ", gradientParts)})";
+    }
+
+    // 行を分解して Name, Weight, Rule を返す共通関数
+    private (string Name, int Weight, string Rule) ParseLine(string line)
+    {
+        // 全角記号を半角に統一
+        string temp = line.Replace("：", ":").Replace("｛", "{").Replace("｝", "}");
+        
+        string rule = "";
+        int braceStart = temp.IndexOf('{');
+        int braceEnd = temp.LastIndexOf('}');
+        
+        // ルールの抽出
+        if (braceStart >= 0 && braceEnd > braceStart)
+        {
+            rule = temp.Substring(braceStart + 1, braceEnd - braceStart - 1).Trim();
+            temp = temp.Substring(0, braceStart).Trim(); // ルール部分を削除
+        }
+        
+        // 重みの抽出
+        int weight = 1;
+        var parts = temp.Split(':');
+        string name = parts[0].Trim();
+        
+        if (parts.Length > 1) 
+        {
+            int.TryParse(parts[1], out weight);
+            if (weight <= 0) weight = 1;
+        }
+        
+        return (name, weight, rule);
     }
 
     private async Task SpinWheel()
@@ -344,49 +369,60 @@
         double normalized = finalAngle % 360;
         double stopAngle = (360 - normalized) % 360;
         var hitSegment = Segments.FirstOrDefault(s => stopAngle >= s.StartAngle && stopAngle < s.EndAngle);
+        
         if (hitSegment != null)
         {
             hitItem = hitSegment.Name;
+            
             if (!string.IsNullOrEmpty(hitSegment.Rule))
             {
-                if (hitSegment.Rule.Contains("*ランダム道連れ")) hitRuleDescription = "⚡ 順番をシャッフルして右隣を道連れにする！";
-                else if (hitSegment.Rule.Contains("*ランダム復活")) hitRuleDescription = "✨ 順番をシャッフルして消えた誰かを復活させる！";
+                // 条件をゆるく判定（"道連れ" という文字が含まれていればOK）
+                if (hitSegment.Rule.Contains("道連れ")) 
+                    hitRuleDescription = "⚡ 順番をシャッフルして右隣を道連れにする！";
+                else if (hitSegment.Rule.Contains("復活")) 
+                    hitRuleDescription = "✨ 順番をシャッフルして消えた誰かを復活させる！";
                 else if (hitSegment.Rule.Contains("+")) hitRuleDescription = "追加アイテムが出現！";
                 else if (hitSegment.Rule.Contains("-")) hitRuleDescription = "アイテム消滅！";
             }
         }
-        else hitItem = Segments[0].Name;
+        else
+        {
+            hitItem = Segments[0].Name;
+        }
     }
 
-    // ▼▼ 重要な修正箇所: ロジックの優先順位を整理 ▼▼
+    // ▼▼ 結果処理ロジック ▼▼
     private async Task CloseModal() 
     { 
         showResult = false;
         
         var lines = InputText.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).ToList();
-        var hitSegment = Segments.FirstOrDefault(s => s.Name == hitItem);
-        string rule = hitSegment?.Rule ?? "";
-
-        DebugLog = $"当選: {hitItem}";
-
-        // 【修正】まず特殊ルールがあるか確認。特殊ルールがある場合は、通常の「removeWinner」処理は行わない（上書きする）。
         
-        if (rule.Contains("*ランダム道連れ")) // クロちゃん
+        // 当選項目の情報を取得
+        var hitSegment = Segments.FirstOrDefault(s => s.Name == hitItem);
+        string rule = hitSegment?.Rule ?? ""; // ルール（スペース除去済み）
+
+        DebugLog = $"当選: {hitItem} (Rule: {rule})";
+
+        // ★ 優先度1: クロちゃん（道連れ）
+        if (rule.Contains("道連れ")) 
         {
             ShuffleList(lines);
-            int myIndex = lines.FindIndex(l => ParseName(l) == hitItem);
+            // 自分のインデックスを探す（ParseLineを使って厳密に比較）
+            int myIndex = lines.FindIndex(l => ParseLine(l).Name == hitItem);
             
             if (myIndex != -1 && lines.Count > 1)
             {
+                // 右隣（次の人）を削除
                 int targetIndex = (myIndex + 1) % lines.Count;
-                string targetName = ParseName(lines[targetIndex]);
+                string targetName = ParseLine(lines[targetIndex]).Name;
                 
                 AddToGraveyard(lines[targetIndex]);
                 lines.RemoveAt(targetIndex);
                 DebugLog += $" -> {targetName}を道連れ";
                 
-                // 再検索して自分も消す
-                myIndex = lines.FindIndex(l => ParseName(l) == hitItem);
+                // もう一度自分を探して削除（インデックスがずれている可能性があるため）
+                myIndex = lines.FindIndex(l => ParseLine(l).Name == hitItem);
                 if (myIndex != -1)
                 {
                     AddToGraveyard(lines[myIndex]);
@@ -396,43 +432,48 @@
             }
             else if (myIndex != -1)
             {
+                 // 誰もいない場合は自分だけ消える
                  AddToGraveyard(lines[myIndex]);
                  lines.RemoveAt(myIndex);
-                 DebugLog += " -> 自爆(単独)";
+                 DebugLog += " -> 自爆(道連れなし)";
             }
         }
-        else if (rule.Contains("*ランダム復活")) // ひょうろく
+        // ★ 優先度2: ひょうろく（復活）
+        else if (rule.Contains("復活")) 
         {
             ShuffleList(lines);
-            int myIndex = lines.FindIndex(l => ParseName(l) == hitItem);
+            int myIndex = lines.FindIndex(l => ParseLine(l).Name == hitItem);
             
             if (myIndex != -1)
             {
                 if (Graveyard.Count > 0)
                 {
                     string revivedLine = Graveyard.Last();
-                    string revivedName = ParseName(revivedLine);
+                    string revivedName = ParseLine(revivedLine).Name;
                     Graveyard.RemoveAt(Graveyard.Count - 1);
                     
+                    // 自分を上書き（復活）
                     lines[myIndex] = revivedLine;
                     DebugLog += $" -> {revivedName}が復活";
                 }
                 else
                 {
+                    // 墓場が空なら自分が消えるだけ
                     AddToGraveyard(lines[myIndex]);
                     lines.RemoveAt(myIndex);
                     DebugLog += " -> 復活失敗(墓場空)";
                 }
             }
         }
+        // ★ 優先度3: 通常処理
         else 
         {
-            // 特殊ルールがない場合のみ、通常の削除機能を作動させる
+            // まず当選者の削除判定（removeWinnerがONの場合）
             if (removeWinner)
             {
                 for (int i = lines.Count - 1; i >= 0; i--)
                 {
-                    if (ParseName(lines[i]) == hitItem)
+                    if (ParseLine(lines[i]).Name == hitItem)
                     {
                         AddToGraveyard(lines[i]);
                         lines.RemoveAt(i);
@@ -451,17 +492,18 @@
                     string cmd = r.Trim();
                     if (cmd.StartsWith("+")) 
                     {
-                        lines.Add(cmd.Substring(1).Trim());
-                        DebugLog += $" -> 追加";
+                        string addItem = cmd.Substring(1).Trim();
+                        lines.Add(addItem);
+                        DebugLog += $" -> 追加({addItem})";
                     }
                     else if (cmd.StartsWith("-")) 
                     {
                         string delTarget = cmd.Substring(1).Trim();
-                        var targetIndex = lines.FindIndex(l => ParseName(l) == delTarget);
+                        var targetIndex = lines.FindIndex(l => ParseLine(l).Name == delTarget);
                         if (targetIndex != -1) {
                             AddToGraveyard(lines[targetIndex]);
                             lines.RemoveAt(targetIndex);
-                            DebugLog += $" -> 削除({delTarget})";
+                            DebugLog += $" -> 指定削除({delTarget})";
                         }
                     }
                 }
@@ -484,16 +526,7 @@
             list[k] = list[n];
             list[n] = value;
         }
-    }
-    
-    private string ParseName(string line)
-    {
-        string name = line;
-        int braceIndex = name.IndexOf('{');
-        if (braceIndex >= 0) name = name.Substring(0, braceIndex);
-        int colonIndex = name.IndexOf(':');
-        if (colonIndex >= 0) name = name.Substring(0, colonIndex);
-        return name.Trim();
+        DebugLog += " -> シャッフル";
     }
     
     private void AddToGraveyard(string line) { Graveyard.Add(line); }
@@ -502,8 +535,7 @@
 <style>
     /* ログ表示エリア */
     .debug-log { background: rgba(0, 0, 0, 0.5); color: #00ff00; font-family: monospace; padding: 5px 10px; border-radius: 5px; margin-bottom: 10px; font-size: 0.8rem; width: 90%; max-width: 400px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-
-    /* 既存スタイル */
+    /* 共通スタイル */
     .casino-table { background-color: #2c3e50; min-height: 100vh; display: flex; flex-direction: column; align-items: center; font-family: 'Helvetica Neue', Arial, sans-serif; color: white; padding: 20px; }
     .title-area { text-align: center; margin-bottom: 10px; }
     .main-subtitle { margin: 5px 0; font-size: 1rem; color: #ecf0f1; font-weight: bold; }
