@@ -19,7 +19,20 @@
     </div>
 
     <div class="debug-log">
-        📜 ログ:<br>@DebugLog
+        <div class="log-title">📜 プレイ履歴</div>
+        <div class="log-content">
+            @if (GameLogs.Count == 0)
+            {
+                <span style="color:#7f8c8d;">(履歴なし)</span>
+            }
+            else
+            {
+                @foreach (var log in GameLogs)
+                {
+                    <div class="log-item">@log</div>
+                }
+            }
+        </div>
     </div>
 
     <div class="preset-area">
@@ -167,6 +180,10 @@
 </script>
 
 @code {
+    // 画像URL（自由に変更可能）
+    private string KuroImageURL = "https://1.bp.blogspot.com/-t-AL2-pXpwo/UYzZ3B7ZVII/AAAAAAAASMI/8sJqXuwMh3Q/s400/monster06.png"; // 例
+    private string HyorokuImageURL = "https://3.bp.blogspot.com/-9q-V9qKkkyU/UZYl_w-uXOI/AAAAAAAATRA/gJv7s7QY8wM/s400/fantasy_zombie.png"; // 例
+
     public class RoulettePreset { public string Name { get; set; } = ""; public string Data { get; set; } = ""; }
     
     public class RouletteSegment
@@ -181,7 +198,9 @@
 
     private string InputText = "アイドル\n芸人A\n芸人B\nクロちゃん\nひょうろく";
     private string BackupText = "";
-    private string DebugLog = "待機中...";
+    
+    // 変更点: ログをリストで管理
+    private List<string> GameLogs = new List<string>();
     
     private List<RoulettePreset> Presets = new List<RoulettePreset>();
     private string NewPresetName = "";
@@ -245,6 +264,13 @@
         }
     }
     
+    // ログ追加用ヘルパー関数
+    private void AddLog(string message)
+    {
+        // 最新が上に来るように挿入
+        GameLogs.Insert(0, message);
+    }
+
     private async Task ToggleBgm() { isBgmOn = !isBgmOn; await JSRuntime.InvokeVoidAsync("toggleBgm", isBgmOn); }
     private void CheckUrlForSharedData() { 
         try {
@@ -279,11 +305,11 @@
         else Presets.Add(new RoulettePreset { Name = NewPresetName, Data = InputText });
         await SavePresetsToStorage();
     }
-    private async Task LoadPreset(RoulettePreset preset) { InputText = preset.Data; BackupText = preset.Data; NewPresetName = preset.Name; Graveyard.Clear(); Recalculate(); await SaveData(); }
+    private async Task LoadPreset(RoulettePreset preset) { InputText = preset.Data; BackupText = preset.Data; NewPresetName = preset.Name; Graveyard.Clear(); GameLogs.Clear(); AddLog("📂 リストを読み込みました"); Recalculate(); await SaveData(); }
     private async Task DeletePreset(RoulettePreset preset) { Presets.Remove(preset); if (NewPresetName == preset.Name) NewPresetName = ""; await SavePresetsToStorage(); }
     private async Task SavePresetsToStorage() { var json = JsonSerializer.Serialize(Presets); await JSRuntime.InvokeVoidAsync("localStorage.setItem", "roulette-presets", json); }
     private async Task UpdateRoulette(ChangeEventArgs e) { InputText = e.Value?.ToString() ?? ""; BackupText = InputText; Recalculate(); await SaveData(); }
-    private async Task ResetList() { InputText = BackupText; Graveyard.Clear(); DebugLog = "リセットしました"; Recalculate(); await SaveData(); }
+    private async Task ResetList() { InputText = BackupText; Graveyard.Clear(); GameLogs.Clear(); AddLog("🔄 リセットしました"); Recalculate(); await SaveData(); }
     private async Task SaveData() { await JSRuntime.InvokeVoidAsync("localStorage.setItem", "roulette-current", InputText); await JSRuntime.InvokeVoidAsync("localStorage.setItem", "roulette-backup", BackupText); }
     private async Task OpenMirumo() { showMirumo = true; await JSRuntime.InvokeVoidAsync("playAudio", "se-mirumo"); }
     private void CloseMirumo() { showMirumo = false; }
@@ -295,7 +321,7 @@
 
         if (lines.Length == 0)
         {
-            // 空の時は何も表示しない（またはメッセージのみ）
+            Segments.Add(new RouletteSegment { Name = "項目を入力", Weight = 1, StartAngle = 0, EndAngle = 360 });
         }
         else
         {
@@ -360,7 +386,6 @@
 
     private async Task SpinWheel()
     {
-        // 変更点: 1人以下の場合は回せないようにガード
         if (isSpinning || Segments.Count <= 1) return;
         
         isSpinning = true;
@@ -368,7 +393,6 @@
         showMirumo = false; 
         hitRuleDescription = "";
         resultImageSrc = ""; 
-        DebugLog = "抽選中...";
         
         await JSRuntime.InvokeVoidAsync("playAudio", "se-drum");
 
@@ -404,12 +428,12 @@
                 if (hitSegment.Rule.Contains("道連れ")) 
                 {
                     hitRuleDescription = "⚡ 順番をシャッフルして右隣を道連れにする！";
-                    resultImageSrc = "images/kuro.png";
+                    resultImageSrc = KuroImageURL;
                 }
                 else if (hitSegment.Rule.Contains("復活")) 
                 {
                     hitRuleDescription = "✨ 順番をシャッフルして消えた誰かを復活させる！";
-                    resultImageSrc = "images/hyoroku.png";
+                    resultImageSrc = HyorokuImageURL;
                 }
                 else if (hitSegment.Rule.Contains("+")) hitRuleDescription = "追加アイテムが出現！";
                 else if (hitSegment.Rule.Contains("-")) hitRuleDescription = "アイテム消滅！";
@@ -426,7 +450,8 @@
         var hitSegment = Segments.FirstOrDefault(s => s.Name == hitItem);
         string rule = hitSegment?.Rule ?? "";
 
-        DebugLog = $"当選: {hitItem}";
+        // ログの一時保存変数
+        string currentLog = $"🎯 当選: {hitItem}";
 
         if (rule.Contains("道連れ")) 
         {
@@ -442,20 +467,20 @@
                     
                     AddToGraveyard(lines[targetIndex]);
                     lines.RemoveAt(targetIndex);
-                    DebugLog += $" -> {targetName}を道連れ";
+                    currentLog += $" → {targetName}を道連れ";
                     
                     myIndex = lines.FindIndex(l => ParseLine(l).Name == hitItem);
                 }
                 else
                 {
-                    DebugLog += " -> 残り2名以下なので道連れ無効";
+                    currentLog += " (道連れ無効:残り2名以下)";
                 }
 
                 if (myIndex != -1)
                 {
                     AddToGraveyard(lines[myIndex]);
                     lines.RemoveAt(myIndex);
-                    DebugLog += " -> 自爆";
+                    currentLog += " → 自爆";
                 }
             }
         }
@@ -474,13 +499,13 @@
                     
                     Graveyard.RemoveAt(randomIndex);
                     lines[myIndex] = revivedLine;
-                    DebugLog += $" -> {revivedName}が復活(ランダム)";
+                    currentLog += $" → {revivedName}が復活";
                 }
                 else
                 {
                     AddToGraveyard(lines[myIndex]);
                     lines.RemoveAt(myIndex);
-                    DebugLog += " -> 復活失敗(墓場空)";
+                    currentLog += " → 復活失敗(墓場空)";
                 }
             }
         }
@@ -494,7 +519,7 @@
                     {
                         AddToGraveyard(lines[i]);
                         lines.RemoveAt(i);
-                        DebugLog += " -> 削除";
+                        currentLog += " → 削除";
                         break; 
                     }
                 }
@@ -510,7 +535,7 @@
                     {
                         string addItem = cmd.Substring(1).Trim();
                         lines.Add(addItem);
-                        DebugLog += $" -> 追加({addItem})";
+                        currentLog += $" → 追加({addItem})";
                     }
                     else if (cmd.StartsWith("-")) 
                     {
@@ -519,13 +544,14 @@
                         if (targetIndex != -1) {
                             AddToGraveyard(lines[targetIndex]);
                             lines.RemoveAt(targetIndex);
-                            DebugLog += $" -> 指定削除({delTarget})";
+                            currentLog += $" → 指定削除({delTarget})";
                         }
                     }
                 }
             }
         }
 
+        AddLog(currentLog);
         InputText = string.Join("\n", lines);
         Recalculate();
         await SaveData();
@@ -542,7 +568,7 @@
             list[k] = list[n];
             list[n] = value;
         }
-        DebugLog += " -> シャッフル";
+        // シャッフルはログに出すと長くなるので省略、必要な場合は AddLog("シャッフル実行")
     }
     
     private void AddToGraveyard(string line) { Graveyard.Add(line); }
@@ -551,7 +577,40 @@
 <style>
     .result-image-container { text-align: center; margin-bottom: 20px; }
     .result-image { max-width: 250px; max-height: 250px; border-radius: 10px; box-shadow: 0 5px 15px rgba(0,0,0,0.3); animation: popUp 0.5s; }
-    .debug-log { background: rgba(0, 0, 0, 0.5); color: #00ff00; font-family: monospace; padding: 5px 10px; border-radius: 5px; margin-bottom: 10px; font-size: 0.8rem; width: 90%; max-width: 400px; white-space: pre-wrap; word-break: break-all; max-height: 100px; overflow-y: auto; }
+    
+    /* ログ表示エリアのスタイル調整 */
+    .debug-log { 
+        background: rgba(0, 0, 0, 0.5); 
+        color: #ecf0f1; 
+        font-family: monospace; 
+        border-radius: 5px; 
+        margin-bottom: 10px; 
+        font-size: 0.85rem; 
+        width: 100%; 
+        max-width: 400px; 
+        border: 1px solid rgba(255,255,255,0.2);
+    }
+    .log-title {
+        background: rgba(255,255,255,0.1);
+        padding: 5px 10px;
+        font-weight: bold;
+        border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+    .log-content {
+        padding: 5px 10px;
+        max-height: 150px;
+        overflow-y: auto;
+    }
+    .log-item {
+        border-bottom: 1px dashed rgba(255,255,255,0.1);
+        padding: 4px 0;
+        line-height: 1.4;
+    }
+    .log-item:first-child {
+        color: #2ecc71; /* 最新のログを緑色に */
+        font-weight: bold;
+    }
+
     .casino-table { background-color: #2c3e50; min-height: 100vh; display: flex; flex-direction: column; align-items: center; font-family: 'Helvetica Neue', Arial, sans-serif; color: white; padding: 20px; }
     .title-area { text-align: center; margin-bottom: 10px; }
     .main-subtitle { margin: 5px 0; font-size: 1rem; color: #ecf0f1; font-weight: bold; }
